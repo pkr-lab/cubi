@@ -6,6 +6,8 @@ Interactive terminal tool for everyday Kubernetes work. It bundles tools you alr
 cubi
 ```
 
+<img src="pics/menu.png" alt="cubi main menu" width="600">
+
 ## Sections
 
 | Section | Contents |
@@ -19,6 +21,10 @@ cubi
 | Login | Login status for ArgoCD, GitHub and Tailscale, plus the matching login commands |
 
 Every section can be opened directly, for example `cubi argocd` or `cubi login`.
+
+The ArgoCD view lists all apps with sync and health status. Apps with problems are sorted to the top, and the table refreshes automatically.
+
+<img src="pics/argocd.png" alt="ArgoCD app table with sync and health status" width="500">
 
 ## Usage
 
