@@ -1,0 +1,35 @@
+connect:
+  vm:
+    - name: vm-prod
+      ssh: prod-vm
+    - name: vm-entw
+      ssh: entw-vm
+  hosts:
+    - name: homeserver
+      ssh: homeserver
+    - name: worker-0
+      ssh: worker-0
+    - name: worker-1
+      ssh: worker-1
+
+argocd:
+  namespace: argocd
+  contexts:
+    - name: kubernetes
+      core: true
+    - name: homeserver:30080
+      server: homeserver:30080
+      plaintext: true
+      insecure: true
+      username: admin
+    - name: 192.168.178.94:30080
+      server: 192.168.178.94:30080
+      plaintext: true
+      insecure: true
+      username: admin
+
+github:
+  default_repo: pkr-lab/capulus-core
+  repos:
+    - pkr-lab/capulus-core
+    - pkr-lab/cubi
