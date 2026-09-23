@@ -1,0 +1,2 @@
+class CubiError(Exception):
+    pass
