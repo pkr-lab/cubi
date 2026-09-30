@@ -148,6 +148,19 @@ def review_cell(entry: dict) -> Text:
     return Text(label, style=REVIEW_STYLES[label])
 
 
+def pr_detail(repo: str, number: int) -> dict:
+    return shell.capture_json(["gh", "pr", "view", str(number), "-R", repo, "--json", "number,isDraft"], timeout=20)
+
+
+def toggle_draft(repo: str, number: int) -> None:
+    current = pr_detail(repo, number)
+    if current.get("isDraft"):
+        if ui.confirm(f"PR #{number} als bereit für Review markieren?"):
+            shell.ensure(shell.capture(["gh", "pr", "ready", str(number), "-R", repo], timeout=20), "Konnte nicht als bereit markiert werden")
+    elif ui.confirm(f"PR #{number} als Entwurf markieren?"):
+        shell.ensure(shell.capture(["gh", "pr", "ready", str(number), "-R", repo, "--undo"], timeout=20), "Konnte nicht als Entwurf markiert werden")
+
+
 def pulls(repo: str) -> None:
     def loader() -> TableData:
         data = shell.capture_json(["gh", "pr", "list", "-R", repo, "--limit", "40", "--json", PR_FIELDS], timeout=30)
@@ -173,6 +186,7 @@ def pulls(repo: str) -> None:
             ("Details", lambda: ui.show_command(["gh", "pr", "view", ident, "-R", repo])),
             ("Checks", lambda: ui.show_command(["gh", "pr", "checks", ident, "-R", repo], "Keine Checks")),
             ("Diff", lambda: ui.show_command(["gh", "pr", "diff", ident, "-R", repo], "Kein Diff")),
+            ("Entwurf umschalten", lambda: toggle_draft(repo, number)),
             ("Im Browser öffnen", lambda: ui.run_command(["gh", "pr", "view", ident, "-R", repo, "--web"])),
         ]
 
@@ -285,6 +299,16 @@ def toggle_state(repo: str, number: int) -> None:
         shell.ensure(shell.capture(["gh", "issue", "close", str(number), "-R", repo], timeout=20), "Schließen fehlgeschlagen")
 
 
+def comment_issue(repo: str, number: int) -> None:
+    body = ui.edit_text("")
+    if not body.strip():
+        return
+    shell.ensure(
+        shell.capture(["gh", "issue", "comment", str(number), "-R", repo, "--body", body], timeout=20),
+        "Kommentar konnte nicht hinzugefügt werden",
+    )
+
+
 def edit_menu(repo: str, number: int) -> None:
     ui.action_menu(
         f"Bearbeiten · #{number}",
@@ -323,6 +347,7 @@ def issues(repo: str) -> None:
         return [
             ("Details", lambda: ui.show_command(["gh", "issue", "view", ident, "-R", repo])),
             ("Bearbeiten", lambda: edit_menu(repo, number)),
+            ("Kommentieren", lambda: comment_issue(repo, number)),
             ("Im Browser öffnen", lambda: ui.run_command(["gh", "issue", "view", ident, "-R", repo, "--web"])),
         ]
 
@@ -457,6 +482,7 @@ def board(repo: str) -> None:
         actions_list = [("Verschieben", lambda: move(item_id))]
         if number_:
             actions_list.append(("Details", lambda: ui.show_command(["gh", "issue", "view", str(number_), "-R", issue_repo])))
+            actions_list.append(("Kommentieren", lambda: comment_issue(issue_repo, number_)))
             actions_list.append(("Im Browser öffnen", lambda: ui.run_command(["gh", "issue", "view", str(number_), "-R", issue_repo, "--web"])))
         return actions_list
 
