@@ -10,7 +10,7 @@ MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
     "connect": (connect.run, "Connect", "SSH zu VMs und Hosts"),
     "argocd": (argocd.run, "ArgoCD", "Status aller Apps, Sync, Diff"),
     "tailscale": (tailscale.run, "Tailscale", "Geräte, Ping, SSH, Up/Down"),
-    "github": (github.run, "GitHub", "Runs, Pull Requests, Issues"),
+    "github": (github.run, "GitHub", "Runs, Pull Requests, Issues, Kanban-Board"),
     "kubernetes": (kube.run, "Kubernetes", "Pods, Nodes, Namespaces"),
     "helm": (helm.run, "Helm", "Releases"),
     "login": (auth.run, "Login", "ArgoCD, GitHub, Tailscale"),
