@@ -122,6 +122,10 @@ def github_menu() -> None:
         [
             ("Login im Browser", lambda: ui.run_command(["gh", "auth", "login", "-h", "github.com"])),
             ("Scopes erneuern", lambda: ui.run_command(["gh", "auth", "refresh", "-h", "github.com"])),
+            (
+                "Projekt-Scope aktivieren (für Kanban-Board)",
+                lambda: ui.run_command(["gh", "auth", "refresh", "-h", "github.com", "-s", "project,read:project"]),
+            ),
         ],
     )
 

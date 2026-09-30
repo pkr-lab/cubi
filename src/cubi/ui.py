@@ -2,12 +2,15 @@ import contextlib
 import os
 import re
 import select
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import termios
 import tty
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from rich import box
@@ -189,6 +192,62 @@ def menu(title: str, items: Sequence[Item], subtitle: str | None = None, initial
                 return items[cursor].value
             elif key in BACK_KEYS:
                 return None
+
+
+def render_prompt(title: str, text: str, cursor: int) -> Panel:
+    line = Text()
+    line.append(text[:cursor])
+    line.append(text[cursor] if cursor < len(text) else " ", style="reverse")
+    line.append(text[cursor + 1:])
+    return Panel(
+        line,
+        title=Text(title, style="bold"),
+        subtitle=Text("Enter Bestätigen · Esc Abbrechen", style="dim"),
+        box=box.ROUNDED,
+        padding=(1, 2),
+        width=min(console.width, 78),
+    )
+
+
+def prompt(title: str, initial: str = "") -> str | None:
+    text = initial
+    cursor = len(text)
+    with raw_terminal(), Live(console=console, screen=True, auto_refresh=False) as live:
+        while True:
+            live.update(render_prompt(title, text, cursor), refresh=True)
+            key = read_key()
+            if key == "enter":
+                return text
+            if key == "esc":
+                return None
+            if key == "backspace":
+                if cursor > 0:
+                    text = text[:cursor - 1] + text[cursor:]
+                    cursor -= 1
+            elif key == "left":
+                cursor = max(0, cursor - 1)
+            elif key == "right":
+                cursor = min(len(text), cursor + 1)
+            elif key == "home":
+                cursor = 0
+            elif key == "end":
+                cursor = len(text)
+            elif key and len(key) == 1 and key.isprintable():
+                text = text[:cursor] + key + text[cursor:]
+                cursor += 1
+
+
+def edit_text(initial: str, suffix: str = ".md") -> str:
+    editor = shlex.split(os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi")
+    with tempfile.NamedTemporaryFile("w", suffix=suffix, delete=False) as handle:
+        handle.write(initial)
+        path = handle.name
+    try:
+        begin("Bearbeiten")
+        shell.run(editor + [path])
+        return Path(path).read_text()
+    finally:
+        os.unlink(path)
 
 
 def cell_width(cell: Any) -> int:
