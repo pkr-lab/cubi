@@ -39,10 +39,10 @@ def first_line(text: str) -> str:
     return lines[0] if lines else ""
 
 
-def capture(cmd: Sequence[str], timeout: float | None = 30) -> subprocess.CompletedProcess:
+def capture(cmd: Sequence[str], timeout: float | None = 30, cwd: str | None = None) -> subprocess.CompletedProcess:
     require(cmd[0])
     try:
-        return subprocess.run(list(cmd), capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(list(cmd), capture_output=True, text=True, timeout=timeout, cwd=cwd)
     except subprocess.TimeoutExpired:
         raise CubiError(f"Zeitüberschreitung bei: {' '.join(cmd)}")
 
@@ -69,10 +69,10 @@ def merge_output(result: subprocess.CompletedProcess) -> str:
     return "\n".join(part for part in parts if part)
 
 
-def run(cmd: Sequence[str]) -> int:
+def run(cmd: Sequence[str], cwd: str | None = None) -> int:
     require(cmd[0])
     try:
-        return subprocess.run(list(cmd)).returncode
+        return subprocess.run(list(cmd), cwd=cwd).returncode
     except KeyboardInterrupt:
         return 130
 

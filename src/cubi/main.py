@@ -3,7 +3,7 @@ from typing import Callable
 
 from . import ui
 from .errors import CubiError
-from .modules import argocd, auth, connect, github, helm, kube, tailscale
+from .modules import argocd, auth, connect, github, helm, kube, tailscale, tokens
 from .ui import Item
 
 MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
@@ -13,6 +13,7 @@ MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
     "github": (github.run, "GitHub", "Runs, Pull Requests, Issues, Kanban-Board"),
     "kubernetes": (kube.run, "Kubernetes", "Pods, Nodes, Namespaces"),
     "helm": (helm.run, "Helm", "Releases"),
+    "tokens": (tokens.run, "Tokens", "Ablauf und Rotation aus dem Token-Register"),
     "login": (auth.run, "Login", "ArgoCD, GitHub, Tailscale"),
 }
 
@@ -23,6 +24,7 @@ ALIASES = {
     "k8s": "kubernetes",
     "kubectl": "kubernetes",
     "auth": "login",
+    "token": "tokens",
 }
 
 

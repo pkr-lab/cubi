@@ -33,3 +33,6 @@ github:
   repos:
     - pkr-lab/capulus-core
     - pkr-lab/cubi
+
+tokens:
+  repo: ~/gitlab/kubernetes/capulus-core
