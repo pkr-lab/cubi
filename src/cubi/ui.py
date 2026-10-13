@@ -443,13 +443,14 @@ def show_command(cmd: Sequence[str], empty: str = "(keine Ausgabe)", title: str 
     show_text(shell.merge_output(result) or empty, title)
 
 
-def run_command(cmd: Sequence[str], title: str | None = None) -> int:
+def run_command(cmd: Sequence[str], title: str | None = None, cwd: str | None = None, wait: bool = True) -> int:
     begin(title or "Ausführung")
     console.print(Text("$ " + " ".join(cmd), style="dim"))
-    code = shell.run(cmd)
+    code = shell.run(cmd, cwd=cwd)
     if code != 0:
         console.print(Text(f"Beendet mit Code {code}", style="red"))
-    pause()
+    if wait:
+        pause()
     return code
 
 
