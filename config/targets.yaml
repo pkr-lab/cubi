@@ -11,6 +11,10 @@ connect:
       ssh: worker-0
     - name: worker-1
       ssh: worker-1
+    - name: infotafel
+      ssh: infotafel
+    - name: alarm-monitor
+      ssh: alarm-monitor
 
 argocd:
   namespace: argocd
