@@ -13,6 +13,7 @@ from . import config
 from .errors import CubiError
 
 REGISTER = Path("ops") / "token-register.yaml"
+DOCS_PREFIX = "pkr-lab-docs:"
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SOON = 60
 URGENT = 7
@@ -66,6 +67,20 @@ def repo_root() -> Path:
     if not (root / REGISTER).is_file():
         raise CubiError(f"Token-Register nicht gefunden: {root / REGISTER} (tokens.repo in der Config setzen)")
     return root
+
+
+def docs_root() -> Path:
+    configured = config.section("tokens").get("docs_repo")
+    root = Path(str(configured)).expanduser() if configured else config.ROOT.parent / "pkr-lab-docs"
+    if not root.is_dir():
+        raise CubiError(f"Docs-Repo nicht gefunden: {root} (tokens.docs_repo in der Config setzen)")
+    return root
+
+
+def resolve_runbook(value: str) -> Path:
+    if value.startswith(DOCS_PREFIX):
+        return docs_root() / value[len(DOCS_PREFIX):]
+    return repo_root() / value
 
 
 def register_path() -> Path:
