@@ -1,0 +1,12 @@
+name: Commitlint
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    uses: pkr-lab/.github/.github/workflows/commitlint.yml@e44248cf042c1ec7d3d0aa0f99765c40b5565765 # v1.0.1
