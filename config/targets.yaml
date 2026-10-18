@@ -40,3 +40,4 @@ github:
 
 tokens:
   repo: ~/gitlab/kubernetes/capulus-core
+  docs_repo: ~/gitlab/pkr-lab-docs

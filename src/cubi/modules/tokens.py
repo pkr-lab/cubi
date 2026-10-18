@@ -91,7 +91,7 @@ def slug(heading: str) -> str:
 def runbook(token_id: str) -> None:
     token = find(token_id)
     path_text, _, anchor = token.runbook.partition("#")
-    path = token_register.repo_root() / path_text
+    path = token_register.resolve_runbook(path_text)
     if not path_text or not path.is_file():
         raise CubiError(f"Runbook ist keine Datei im Repo: {token.runbook or '-'}")
     text = path.read_text(encoding="utf-8")
