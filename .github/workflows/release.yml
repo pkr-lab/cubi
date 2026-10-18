@@ -1,0 +1,23 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: pkr-lab/.github/.github/workflows/release.yml@e44248cf042c1ec7d3d0aa0f99765c40b5565765 # v1.0.1
+    with:
+      build-script: .github/release/build.sh
+      assets: '["dist/*.tar.gz"]'

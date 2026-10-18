@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+header="$(head -n 1 "$1")"
+pattern='^(feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert)(\([a-z0-9_./,-]+\))?!?: .+'
+
+case "$header" in
+  Merge\ * | Revert\ * | fixup!\ * | squash!\ *) exit 0 ;;
+esac
+
+if [[ ! "$header" =~ $pattern ]]; then
+  echo "Commit-Nachricht entspricht nicht Conventional Commits:" >&2
+  echo "  $header" >&2
+  echo "Erwartet: <typ>(<scope>)!: <beschreibung>, Typen: feat fix docs chore refactor test ci build perf style revert" >&2
+  exit 1
+fi
