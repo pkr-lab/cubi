@@ -74,7 +74,6 @@ def load() -> TableData:
 
 def connect(name: str, ip: str) -> None:
     target = name if name in ssh_aliases() else ip
-    ui.console.clear()
     shell.replace(["ssh", target])
 
 
@@ -103,7 +102,7 @@ def down() -> None:
 def run() -> None:
     selected = None
     while True:
-        key, value = ui.table_view(
+        key, value = ui.table_select(
             "Tailscale",
             ["Gerät", "IP", "OS", "Status"],
             load,

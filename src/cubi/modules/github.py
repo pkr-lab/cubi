@@ -74,7 +74,7 @@ def pick_repo(current: str | None) -> str | None:
             repos.append(name)
     if not repos:
         raise CubiError("Keine Repositories gefunden")
-    return ui.menu("Repo wählen", [Item(repo, repo, "aktuell" if repo == current else "") for repo in repos])
+    return ui.select("Repo wählen", [Item(repo, repo, "aktuell" if repo == current else "") for repo in repos])
 
 
 def author_name(entry: dict) -> str:
@@ -91,7 +91,7 @@ def list_view(
 ) -> None:
     selected = None
     while True:
-        key, value = ui.table_view(f"GitHub · {title} · {repo}", columns, loader, interval=30, initial=selected)
+        key, value = ui.table_select(f"GitHub · {title} · {repo}", columns, loader, interval=30, initial=selected)
         if key != "enter":
             return
         selected = value
@@ -129,7 +129,7 @@ def runs(repo: str) -> None:
             ("Details", lambda: ui.show_command(["gh", "run", "view", ident, "-R", repo])),
             ("Log fehlgeschlagener Schritte", lambda: ui.show_command(["gh", "run", "view", ident, "-R", repo, "--log-failed"], "Keine fehlgeschlagenen Schritte")),
             ("Neu starten", lambda: rerun(repo, ident)),
-            ("Im Browser öffnen", lambda: ui.run_command(["gh", "run", "view", ident, "-R", repo, "--web"])),
+            ("Link anzeigen", lambda: ui.info(f"https://github.com/{repo}/actions/runs/{ident}")),
         ]
 
     list_view(repo, "Workflow-Runs", ["Workflow", "Titel", "Branch", "Event", "Status", "Alter"], loader, actions)
@@ -187,7 +187,7 @@ def pulls(repo: str) -> None:
             ("Checks", lambda: ui.show_command(["gh", "pr", "checks", ident, "-R", repo], "Keine Checks")),
             ("Diff", lambda: ui.show_command(["gh", "pr", "diff", ident, "-R", repo], "Kein Diff")),
             ("Entwurf umschalten", lambda: toggle_draft(repo, number)),
-            ("Im Browser öffnen", lambda: ui.run_command(["gh", "pr", "view", ident, "-R", repo, "--web"])),
+            ("Link anzeigen", lambda: ui.info(f"https://github.com/{repo}/pull/{ident}")),
         ]
 
     list_view(repo, "Pull Requests", ["#", "Titel", "Autor", "Branch", "Review", "Alter"], loader, actions)
@@ -223,8 +223,11 @@ def edit_title(repo: str, number: int) -> None:
 
 def edit_body(repo: str, number: int) -> None:
     current = issue_detail(repo, number)
-    body = ui.edit_text(current.get("body") or "")
-    if body == (current.get("body") or ""):
+    existing = current.get("body") or ""
+    if existing:
+        ui.show_text(existing, f"Aktuelle Beschreibung · #{number}")
+    body = ui.text_block("Neue Beschreibung (ersetzt die bisherige)")
+    if body is None or body == existing:
         return
     shell.ensure(
         shell.capture(["gh", "issue", "edit", str(number), "-R", repo, "--body", body], timeout=30),
@@ -238,11 +241,11 @@ def add_label(repo: str, number: int) -> None:
     choices = [name for name in all_labels(repo) if name not in have]
     if not choices:
         raise CubiError("Keine weiteren Labels verfügbar")
-    label = ui.menu(f"Label hinzufügen · #{number}", [Item(name, name) for name in choices])
-    if label is None:
+    labels = ui.multiselect(f"Labels hinzufügen · #{number}", [Item(name, name) for name in choices], min_count=1)
+    if labels is None:
         return
     shell.ensure(
-        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, "--add-label", label], timeout=20),
+        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, *[part for label in labels for part in ("--add-label", label)]], timeout=20),
         "Label konnte nicht hinzugefügt werden",
     )
 
@@ -252,11 +255,11 @@ def remove_label(repo: str, number: int) -> None:
     have = [label["name"] for label in current.get("labels") or []]
     if not have:
         raise CubiError("Issue hat keine Labels")
-    label = ui.menu(f"Label entfernen · #{number}", [Item(name, name) for name in have])
-    if label is None:
+    labels = ui.multiselect(f"Labels entfernen · #{number}", [Item(name, name) for name in have], min_count=1)
+    if labels is None:
         return
     shell.ensure(
-        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, "--remove-label", label], timeout=20),
+        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, *[part for label in labels for part in ("--remove-label", label)]], timeout=20),
         "Label konnte nicht entfernt werden",
     )
 
@@ -267,11 +270,11 @@ def add_assignee(repo: str, number: int) -> None:
     choices = [login for login in assignable_users(repo) if login not in have]
     if not choices:
         raise CubiError("Keine weiteren Personen verfügbar")
-    login = ui.menu(f"Zuweisen · #{number}", [Item(login, login) for login in choices])
-    if login is None:
+    logins = ui.multiselect(f"Zuweisen · #{number}", [Item(login, login) for login in choices], min_count=1)
+    if logins is None:
         return
     shell.ensure(
-        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, "--add-assignee", login], timeout=20),
+        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, *[part for login in logins for part in ("--add-assignee", login)]], timeout=20),
         "Zuweisung fehlgeschlagen",
     )
 
@@ -281,11 +284,11 @@ def remove_assignee(repo: str, number: int) -> None:
     have = [entry["login"] for entry in current.get("assignees") or []]
     if not have:
         raise CubiError("Issue ist niemandem zugewiesen")
-    login = ui.menu(f"Zuweisung entfernen · #{number}", [Item(login, login) for login in have])
-    if login is None:
+    logins = ui.multiselect(f"Zuweisung entfernen · #{number}", [Item(login, login) for login in have], min_count=1)
+    if logins is None:
         return
     shell.ensure(
-        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, "--remove-assignee", login], timeout=20),
+        shell.capture(["gh", "issue", "edit", str(number), "-R", repo, *[part for login in logins for part in ("--remove-assignee", login)]], timeout=20),
         "Zuweisung konnte nicht entfernt werden",
     )
 
@@ -300,8 +303,8 @@ def toggle_state(repo: str, number: int) -> None:
 
 
 def comment_issue(repo: str, number: int) -> None:
-    body = ui.edit_text("")
-    if not body.strip():
+    body = ui.text_block("Kommentar")
+    if body is None:
         return
     shell.ensure(
         shell.capture(["gh", "issue", "comment", str(number), "-R", repo, "--body", body], timeout=20),
@@ -315,9 +318,9 @@ def edit_menu(repo: str, number: int) -> None:
         [
             ("Titel ändern", lambda: edit_title(repo, number)),
             ("Beschreibung bearbeiten", lambda: edit_body(repo, number)),
-            ("Label hinzufügen", lambda: add_label(repo, number)),
-            ("Label entfernen", lambda: remove_label(repo, number)),
-            ("Zuweisen", lambda: add_assignee(repo, number)),
+            ("Labels hinzufügen", lambda: add_label(repo, number)),
+            ("Labels entfernen", lambda: remove_label(repo, number)),
+            ("Zuweisen (mehrere)", lambda: add_assignee(repo, number)),
             ("Zuweisung entfernen", lambda: remove_assignee(repo, number)),
             ("Schließen/Öffnen", lambda: toggle_state(repo, number)),
         ],
@@ -348,7 +351,7 @@ def issues(repo: str) -> None:
             ("Details", lambda: ui.show_command(["gh", "issue", "view", ident, "-R", repo])),
             ("Bearbeiten", lambda: edit_menu(repo, number)),
             ("Kommentieren", lambda: comment_issue(repo, number)),
-            ("Im Browser öffnen", lambda: ui.run_command(["gh", "issue", "view", ident, "-R", repo, "--web"])),
+            ("Link anzeigen", lambda: ui.info(f"https://github.com/{repo}/issues/{ident}")),
         ]
 
     list_view(repo, "Issues", ["#", "Titel", "Autor", "Labels", "Alter"], loader, actions)
@@ -373,7 +376,7 @@ def pick_board(owner: str) -> tuple[str, int]:
     if not projects:
         raise CubiError(f"Keine Projekte für {owner} gefunden")
     items = [Item(str(project.get("title", "?")), (owner, int(project["number"])), f"#{project['number']}") for project in projects]
-    picked = ui.menu(f"Board wählen · {owner}", items)
+    picked = ui.select(f"Board wählen · {owner}", items)
     if picked is None:
         raise CubiError("Kein Board ausgewählt")
     return picked
@@ -456,7 +459,7 @@ def board(repo: str) -> None:
     def move(item_id: str) -> None:
         entry = items_by_id.get(item_id) or {}
         current = field_value(entry, field_name)
-        choice = ui.menu("Spalte wählen", [Item(name, name, "aktuell" if name == current else "") for name in option_names], initial=current)
+        choice = ui.select("Spalte wählen", [Item(name, name, "aktuell" if name == current else "") for name in option_names], initial=current)
         if choice is None or choice == current:
             return
         target = next(option for option in options if str(option["name"]) == choice)
@@ -483,12 +486,12 @@ def board(repo: str) -> None:
         if number_:
             actions_list.append(("Details", lambda: ui.show_command(["gh", "issue", "view", str(number_), "-R", issue_repo])))
             actions_list.append(("Kommentieren", lambda: comment_issue(issue_repo, number_)))
-            actions_list.append(("Im Browser öffnen", lambda: ui.run_command(["gh", "issue", "view", str(number_), "-R", issue_repo, "--web"])))
+            actions_list.append(("Link anzeigen", lambda: ui.info(f"https://github.com/{issue_repo}/issues/{number_}")))
         return actions_list
 
     selected = None
     while True:
-        key, value = ui.table_view(f"GitHub · Kanban-Board · {owner}", ["Status", "#", "Titel", "Repo", "Labels"], loader, interval=30, initial=selected)
+        key, value = ui.table_select(f"GitHub · Kanban-Board · {owner}", ["Status", "#", "Titel", "Repo", "Labels"], loader, interval=30, initial=selected)
         if key != "enter":
             return
         selected = value
@@ -525,18 +528,17 @@ def commits(repo: str, path: str, revision: str) -> None:
 
     selected = None
     while True:
-        key, value = ui.table_view(f"GitHub · Commits · {repo}", ["Commit", "Alter", "Autor", "Nachricht"], loader, interval=60, initial=selected)
+        key, value = ui.table_select(f"GitHub · Commits · {repo}", ["Commit", "Alter", "Autor", "Nachricht"], loader, interval=60, initial=selected)
         if key != "enter":
             return
         selected = value
-        ui.run_command(["gh", "browse", value, "-R", repo])
+        ui.info(f"https://github.com/{repo}/commit/{value}")
 
 
-def browse_path(repo: str, path: str, revision: str) -> None:
-    cmd = ["gh", "browse", path or "", "-R", repo]
-    if revision and revision != "HEAD":
-        cmd += ["-b", revision]
-    ui.run_command([part for part in cmd if part])
+def path_link(repo: str, path: str, revision: str) -> None:
+    ref = quote(revision) if revision and revision != "HEAD" else "HEAD"
+    suffix = f"/{quote(path)}" if path else ""
+    ui.info(f"https://github.com/{repo}/tree/{ref}{suffix}")
 
 
 def source_menu(repo_url: str, path: str, revision: str) -> None:
@@ -547,7 +549,7 @@ def source_menu(repo_url: str, path: str, revision: str) -> None:
         f"Quelle · {repo}",
         [
             ("Letzte Commits für den Pfad", lambda: commits(repo, path, revision)),
-            ("Pfad im Browser öffnen", lambda: browse_path(repo, path, revision)),
+            ("Link zum Pfad anzeigen", lambda: path_link(repo, path, revision)),
         ],
         subtitle=f"{path or '/'} @ {revision or 'HEAD'}",
     )
@@ -559,14 +561,14 @@ def run() -> None:
         return
     choice = None
     while True:
-        choice = ui.menu(
+        choice = ui.select(
             f"GitHub · {repo}",
             [
                 Item("Workflow-Runs", "runs", "gh run list"),
                 Item("Pull Requests", "pulls", "gh pr list"),
                 Item("Issues", "issues", "gh issue list"),
                 Item("Kanban-Board", "board", "gh project item-list"),
-                Item("Repo im Browser öffnen", "browse", "gh repo view --web"),
+                Item("Repo-Link anzeigen", "browse", f"https://github.com/{repo}"),
                 Item("Repo wechseln", "switch", "aus Config und gh repo list"),
             ],
             initial=choice,
@@ -582,6 +584,6 @@ def run() -> None:
         elif choice == "board":
             ui.guard(board, repo)
         elif choice == "browse":
-            ui.guard(ui.run_command, ["gh", "repo", "view", "-R", repo, "--web"])
+            ui.info(f"https://github.com/{repo}")
         elif choice == "switch":
             repo = ui.guard(pick_repo, repo) or repo

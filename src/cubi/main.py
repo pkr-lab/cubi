@@ -3,12 +3,14 @@ from typing import Callable
 
 from . import ui
 from .errors import CubiError
-from .modules import argocd, auth, connect, github, helm, kube, tailscale, tokens
+from .modules import argocd, auth, autosync, branch, connect, github, helm, kube, tailscale, tokens
 from .ui import Item
 
 MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
     "connect": (connect.run, "Connect", "SSH zu VMs und Hosts"),
     "argocd": (argocd.run, "ArgoCD", "Status aller Apps, Sync, Diff"),
+    "autosync": (autosync.run, "Auto-Sync", "ArgoCD Auto-Sync deaktivieren/aktivieren"),
+    "branch": (branch.run, "Branch", "ArgoCD-Apps auf anderen Branch umstellen"),
     "tailscale": (tailscale.run, "Tailscale", "Geräte, Ping, SSH, Up/Down"),
     "github": (github.run, "GitHub", "Runs, Pull Requests, Issues, Kanban-Board"),
     "kubernetes": (kube.run, "Kubernetes", "Pods, Nodes, Namespaces"),
@@ -19,6 +21,7 @@ MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
 
 ALIASES = {
     "argo": "argocd",
+    "sync": "autosync",
     "ts": "tailscale",
     "gh": "github",
     "k8s": "kubernetes",
@@ -61,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     choice = None
     while True:
         try:
-            choice = ui.menu("cubi", items, initial=choice)
+            choice = ui.select("cubi · Bereich wählen", items, initial=choice)
         except CubiError as exc:
             ui.error(str(exc))
             return 1

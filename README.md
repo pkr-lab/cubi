@@ -15,4 +15,8 @@ Voraussetzung: Python 3 mit `rich` und `pyyaml`.
 
 ## Dokumentation
 
+Im Repository: [docs/](docs/README.md) mit Bedienung, ArgoCD-Features (Auto-Sync, Branch) und der Select-Komponente.
+
+Weitere Seiten:
+
 [Überblick](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/index.md) · [Installation](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/installation.md) · [Konfiguration](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/konfiguration.md) · [Nutzung](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/nutzung.md) · [Releases](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/releases.md)

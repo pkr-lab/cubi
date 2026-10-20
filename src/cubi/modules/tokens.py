@@ -155,8 +155,7 @@ def rotate(token_id: str) -> None:
         cmd = [str(root / token.command[0]), *token.command[1:]]
         if not ui.confirm(f"Skript ausführen? ({' '.join(token.command)})"):
             return
-        if ui.run_command(cmd, f"Rotation · {token.id}", cwd=str(root), wait=False) != 0:
-            ui.pause()
+        if ui.run_command(cmd, f"Rotation · {token.id}", cwd=str(root)) != 0:
             return
         if token.overlap:
             ui.console.print(Text("\nDas alte Token ist noch gültig. Erst nach der Prüfung widerrufen.", style="yellow"))
@@ -191,7 +190,7 @@ def check_register() -> None:
 def run() -> None:
     selected = None
     while True:
-        key, value = ui.table_view(
+        key, value = ui.table_select(
             "Tokens",
             ["Token", "Dienst", "Rotation", "Ausgestellt", "Läuft ab"],
             load,

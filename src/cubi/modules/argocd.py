@@ -8,10 +8,10 @@ from rich.text import Text
 from rich import box
 
 from .. import argocd_config, shell, ui
-from ..errors import CubiError
+from ..argocd_apps import choose_apps, fetch_apps, policy_label, revision_label
 from ..timeutil import age, parse_iso
 from ..ui import Item, Row, TableData
-from . import github
+from . import autosync, branch, github
 
 SYNC_STYLES = {
     "Synced": "green",
@@ -50,23 +50,6 @@ SYNC_RANK = {
 AUTH_HINTS = ("unauthenticated", "token is expired", "expired", "please log in", "login")
 
 
-def normalize(item: dict) -> dict[str, Any]:
-    metadata = item.get("metadata", {})
-    spec = item.get("spec", {})
-    status = item.get("status", {})
-    source = spec.get("source") or next(iter(spec.get("sources") or []), {})
-    return {
-        "name": metadata.get("name", "?"),
-        "project": spec.get("project", "default"),
-        "sync": status.get("sync", {}).get("status", "Unknown"),
-        "health": status.get("health", {}).get("status", "Unknown"),
-        "repo": source.get("repoURL", ""),
-        "path": source.get("path", ""),
-        "revision": source.get("targetRevision", ""),
-        "raw": item,
-    }
-
-
 def rank(app: dict) -> tuple[int, str]:
     return min(HEALTH_RANK.get(app["health"], 4), SYNC_RANK.get(app["sync"], 4)), app["name"]
 
@@ -89,15 +72,6 @@ def filter_label(state: dict) -> str:
     if state["mode"] == "project":
         return f"Projekt {state['project']}"
     return ""
-
-
-def fetch_apps() -> list[dict]:
-    namespace = argocd_config.namespace()
-    try:
-        data = shell.capture_json(["kubectl", "get", "applications.argoproj.io", "-n", namespace, "-o", "json"], timeout=30)
-    except CubiError as exc:
-        raise CubiError(f"ArgoCD-Apps konnten nicht gelesen werden: {exc}")
-    return [normalize(item) for item in data.get("items", [])]
 
 
 def count_line(label: str, counts: Counter, order: list[str], styles: dict[str, str]) -> Text:
@@ -154,7 +128,7 @@ def make_loader(state: dict):
 def choose_filter(state: dict) -> None:
     items = [Item("Alle Apps", ("all", None)), Item("Nur Probleme", ("problems", None))]
     items.extend(Item(f"Projekt: {project}", ("project", project)) for project in state.get("projects", []))
-    choice = ui.menu("Filter", items)
+    choice = ui.select("Filter", items)
     if choice is not None:
         state["mode"], state["project"] = choice
 
@@ -162,7 +136,7 @@ def choose_filter(state: dict) -> None:
 def choose_context() -> None:
     current = argocd_config.current_context()
     items = [Item(context["name"], context["name"], "aktiv" if context["name"] == current else "") for context in argocd_config.configured_contexts()]
-    choice = ui.menu("ArgoCD-Kontext", items)
+    choice = ui.select("ArgoCD-Kontext", items)
     if choice is not None:
         argocd_config.activate(choice)
 
@@ -175,6 +149,25 @@ def cli_output(args: list[str], empty: str) -> None:
     ui.show_text(text or empty)
 
 
+def bulk_sync() -> None:
+    selection = choose_apps(
+        "Apps synchronisieren",
+        ["App", "Projekt", "Sync", "Health"],
+        lambda app: [
+            Text(app["name"]),
+            Text(app["project"]),
+            Text(app["sync"], style=SYNC_STYLES.get(app["sync"], "")),
+            Text(app["health"], style=HEALTH_STYLES.get(app["health"], "")),
+        ],
+        lambda app: app["sync"] == "OutOfSync",
+    )
+    if not selection:
+        return
+    names = [app["name"] for app in selection]
+    if ui.confirm(f"{len(names)} App(s) synchronisieren? ({', '.join(names)})"):
+        ui.run_command(["argocd", "app", "sync", *names])
+
+
 def sync(name: str) -> None:
     if ui.confirm(f"{name} synchronisieren?"):
         ui.run_command(["argocd", "app", "sync", name])
@@ -185,7 +178,6 @@ def details(app: dict) -> None:
     spec = raw.get("spec", {})
     status = raw.get("status", {})
     operation = status.get("operationState", {})
-    policy = spec.get("syncPolicy", {}).get("automated")
     destination = spec.get("destination", {})
     info = Table.grid(padding=(0, 2))
     info.add_column(style="dim")
@@ -199,12 +191,8 @@ def details(app: dict) -> None:
         info.add_row("Meldung", status["health"]["message"])
     info.add_row("Repo", app["repo"] or "-")
     info.add_row("Pfad", app["path"] or "-")
-    info.add_row("Ziel", app["revision"] or "-")
-    if policy is None:
-        info.add_row("Sync-Policy", "manuell")
-    else:
-        flags = [name for name, key in (("prune", "prune"), ("selfHeal", "selfHeal")) if policy.get(key)]
-        info.add_row("Sync-Policy", "automated" + (f" ({', '.join(flags)})" if flags else ""))
+    info.add_row("Ziel", revision_label(app))
+    info.add_row("Sync-Policy", policy_label(app["automated"]))
     if operation:
         finished = age(parse_iso(operation.get("finishedAt")))
         info.add_row("Letzter Sync", f"{operation.get('phase', '-')} vor {finished}")
@@ -263,11 +251,11 @@ def run() -> None:
     state: dict[str, Any] = {"mode": "all", "project": None, "apps": {}, "projects": []}
     selected = None
     while True:
-        key, value = ui.table_view(
+        key, value = ui.table_select(
             f"ArgoCD · Kontext {argocd_config.current_context()}",
             ["App", "Projekt", "Sync", "Health"],
             make_loader(state),
-            hotkeys={"f": "Filter", "c": "Kontext"},
+            hotkeys={"f": "Filter", "c": "Kontext", "m": "Mehrere syncen", "s": "Auto-Sync", "b": "Branch"},
             interval=10,
             initial=selected,
         )
@@ -277,6 +265,12 @@ def run() -> None:
             ui.guard(choose_filter, state)
         elif key == "c":
             ui.guard(choose_context)
+        elif key == "m":
+            ui.guard(bulk_sync)
+        elif key == "s":
+            ui.guard(autosync.run)
+        elif key == "b":
+            ui.guard(branch.run)
         elif key == "enter":
             selected = value
             app = state["apps"].get(value)

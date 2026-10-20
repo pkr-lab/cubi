@@ -94,7 +94,7 @@ def load_pods(namespace: str | None) -> TableData:
                 Text(pod.get("spec", {}).get("nodeName", "-")),
             ]
         )
-        rows.append(Row(cells, (metadata.get("namespace", ""), metadata["name"])))
+        rows.append(Row(cells, (metadata.get("namespace", ""), metadata["name"]), metadata["name"]))
     return TableData(rows, Text(f"{len(rows)} Pods · {problems} mit Auffälligkeiten", style="dim"))
 
 
@@ -129,7 +129,7 @@ def pods() -> None:
         columns = ["Pod", "Ready", "Status", "Restarts", "Alter", "Node"]
         if show_all:
             columns.insert(0, "Namespace")
-        key, value = ui.table_view(
+        key, value = ui.table_select(
             f"Kubernetes · Pods · {scope}",
             columns,
             lambda: load_pods(namespace),
@@ -182,7 +182,7 @@ def load_nodes() -> TableData:
 def nodes() -> None:
     selected = None
     while True:
-        key, value = ui.table_view(
+        key, value = ui.table_select(
             "Kubernetes · Nodes",
             ["Node", "Status", "Rollen", "Version", "IP", "Alter"],
             load_nodes,
@@ -198,7 +198,7 @@ def nodes() -> None:
 def choose_namespace() -> None:
     names = sorted(item["metadata"]["name"] for item in kubectl_json(["get", "namespaces"])["items"])
     current = current_namespace()
-    choice = ui.menu("Namespace wählen", [Item(name, name, "aktuell" if name == current else "") for name in names])
+    choice = ui.select("Namespace wählen", [Item(name, name, "aktuell" if name == current else "") for name in names])
     if choice is not None:
         shell.ensure(
             shell.capture(["kubectl", "config", "set-context", "--current", f"--namespace={choice}"], timeout=10),
@@ -210,7 +210,7 @@ def choose_context() -> None:
     result = shell.ensure(shell.capture(["kubectl", "config", "get-contexts", "-o", "name"], timeout=10), "Keine Kontexte gefunden")
     current = current_context()
     names = [line for line in result.stdout.splitlines() if line.strip()]
-    choice = ui.menu("Kontext wählen", [Item(name, name, "aktuell" if name == current else "") for name in names])
+    choice = ui.select("Kontext wählen", [Item(name, name, "aktuell" if name == current else "") for name in names])
     if choice is not None:
         shell.ensure(shell.capture(["kubectl", "config", "use-context", choice], timeout=10), "Kontext konnte nicht gesetzt werden")
 
@@ -218,7 +218,7 @@ def choose_context() -> None:
 def run() -> None:
     choice = None
     while True:
-        choice = ui.menu(
+        choice = ui.select(
             "Kubernetes",
             [
                 Item("Pods", "pods", "Status, Logs, Shell"),
