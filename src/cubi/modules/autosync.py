@@ -4,43 +4,28 @@ from dataclasses import dataclass, field
 from rich.text import Text
 
 from .. import argocd_apps, ui
-from ..argocd_apps import PREVIOUS_SYNC_ANNOTATION, policy_cell, policy_flags, policy_label
+from ..argocd_apps import appset_note, policy_cell, policy_flags, policy_label
 from ..errors import CubiError
 from ..ui import Item
 
 DISABLE = "disable"
 ENABLE = "enable"
-COLUMNS = ["App", "Projekt", "Auto-Sync", "Gemerkt"]
+COLUMNS = ["App", "Projekt", "Auto-Sync", "Gemerkt", "Verwaltet von"]
 
 
 @dataclass
 class Change:
     app: dict
     action: str
-    patch: dict
+    state_value: str | None
+    restore: dict | None
     before: str
     after: str
     notes: list[str] = field(default_factory=list)
 
-
-def disable_patch(automated: dict) -> dict:
-    return {
-        "metadata": {"annotations": {PREVIOUS_SYNC_ANNOTATION: json.dumps(automated, sort_keys=True)}},
-        "spec": {"syncPolicy": {"automated": None}},
-    }
-
-
-def enable_patch(automated: dict) -> dict:
-    return {
-        "metadata": {"annotations": {PREVIOUS_SYNC_ANNOTATION: None}},
-        "spec": {"syncPolicy": {"automated": automated}},
-    }
-
-
-def owner_note(app: dict) -> list[str]:
-    if app["managed_by"]:
-        return [f"wird von {app['managed_by']} verwaltet, die Änderung kann dort zurückgesetzt werden"]
-    return []
+    @property
+    def state_key(self) -> str:
+        return f"{self.app['name']}.sync"
 
 
 def plan(app: dict, action: str) -> Change | str:
@@ -48,14 +33,8 @@ def plan(app: dict, action: str) -> Change | str:
     if action == DISABLE:
         if automated is None:
             return "bereits manual"
-        return Change(
-            app,
-            action,
-            disable_patch(automated),
-            policy_label(automated),
-            "manual",
-            [f"Einstellungen werden gemerkt ({policy_flags(automated) or 'ohne prune/selfHeal'})", *owner_note(app)],
-        )
+        notes = [f"Einstellungen werden gemerkt ({policy_flags(automated) or 'ohne prune/selfHeal'})", *appset_note(app, "die Sync-Policy")]
+        return Change(app, action, json.dumps(automated, sort_keys=True), None, policy_label(automated), "manual", notes)
     if automated is not None:
         return "bereits auto"
     stored = app["stored"]
@@ -65,7 +44,18 @@ def plan(app: dict, action: str) -> Change | str:
         if stored is not None
         else "keine gemerkten Einstellungen, automated ohne prune/selfHeal"
     )
-    return Change(app, action, enable_patch(restored), "manual", policy_label(restored), [note, *owner_note(app)])
+    notes = [note]
+    if app["appset"]:
+        notes.append(f"ApplicationSet {app['appset']}: Regel wird entfernt, der Controller setzt die Policy aus dem Template")
+    elif app["managed_by"]:
+        notes.append(f"wird von {app['managed_by']} verwaltet, die Änderung kann dort zurückgesetzt werden")
+    return Change(app, action, None, restored, "manual", policy_label(restored), notes)
+
+
+def owner_cell(app: dict) -> Text:
+    if app["appset"]:
+        return Text(f"AppSet {app['appset']}", style="dim")
+    return Text(app["managed_by"] or "-", style="dim")
 
 
 def cells_for(action: str):
@@ -76,7 +66,7 @@ def cells_for(action: str):
         mode = policy_cell(app["automated"])
         if not applicable:
             mode.stylize("dim")
-        return [Text(app["name"], style=style), Text(app["project"], style=style), mode, Text(stored, style="dim")]
+        return [Text(app["name"], style=style), Text(app["project"], style=style), mode, Text(stored, style="dim"), owner_cell(app)]
 
     return cells
 
@@ -93,16 +83,36 @@ def render_plan(changes: list[Change], skipped: list[tuple[dict, str]]) -> None:
         ui.console.print(Text(f"  {app['name']}  übersprungen ({reason})", style="dim"))
 
 
-def apply(changes: list[Change]) -> None:
+def apply(changes: list[Change]) -> list[Change]:
+    done = []
     for change in changes:
         name = change.app["name"]
         try:
-            argocd_apps.patch_app(name, change.patch, "merge")
+            if change.action == DISABLE:
+                argocd_apps.save_state(change.state_key, change.state_value)
+                argocd_apps.pause_auto_sync(change.app)
+            else:
+                argocd_apps.resume_auto_sync(change.app, change.restore or {})
+                argocd_apps.save_state(change.state_key, None)
         except CubiError as exc:
             ui.console.print(Text(f"✖ {name}: {exc}", style="red"))
             continue
         verb = "deaktiviert" if change.action == DISABLE else "aktiviert"
         ui.console.print(Text(f"✔ {name}: Auto-Sync {verb} ({change.after})", style="green"))
+        done.append(change)
+    return done
+
+
+def verify(changes: list[Change]) -> None:
+    if not changes:
+        return
+    current = argocd_apps.recheck([change.app["name"] for change in changes])
+    checks = []
+    for change in changes:
+        app = current.get(change.app["name"])
+        wanted_manual = change.action == DISABLE
+        checks.append((change.app["name"], app is not None and (app["automated"] is None) == wanted_manual))
+    argocd_apps.report_checks(checks, "wurde zurückgesetzt, ein Controller überschreibt die Sync-Policy")
 
 
 def run() -> None:
@@ -116,7 +126,7 @@ def run() -> None:
     if action is None:
         return
     title = "Apps: Auto-Sync deaktivieren" if action == DISABLE else "Apps: Auto-Sync aktivieren"
-    selection = argocd_apps.choose_apps(title, COLUMNS, cells_for(action))
+    selection = argocd_apps.choose_apps(title, COLUMNS, cells_for(action), with_state=True)
     if not selection:
         return
     changes: list[Change] = []
@@ -133,4 +143,4 @@ def run() -> None:
         ui.info("Nichts zu tun.")
         return
     if ui.confirm(f"{len(changes)} App(s) ändern?"):
-        apply(changes)
+        verify(apply(changes))

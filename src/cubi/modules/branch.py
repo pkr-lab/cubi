@@ -26,6 +26,11 @@ class Change:
     target: str
     patch: list
     notes: list[str] = field(default_factory=list)
+    hold: bool | None = None
+
+    @property
+    def pointer(self) -> str:
+        return f"{source_pointer(self.app, self.index)}/targetRevision"
 
 
 def source_pointer(app: dict, index: int) -> str:
@@ -89,12 +94,22 @@ def auto_sync_notes(app: dict) -> list[str]:
     return notes
 
 
-def plan(app: dict, index: int, target: str) -> Change | str:
+def plan(app: dict, index: int, target: str, template: str | None = None) -> Change | str:
     source = app["sources"][index]
     previous = str(source.get("targetRevision") or "HEAD")
     if previous == target:
         return f"steht bereits auf {target}"
-    return Change(app, index, source, previous, target, build_patch(app, index, target), auto_sync_notes(app))
+    notes = auto_sync_notes(app)
+    hold = None
+    if app["appset"]:
+        hold = template != target
+        if hold:
+            notes.append(f"ApplicationSet {app['appset']}: targetRevision wird per ignoreApplicationDifferences festgehalten")
+        else:
+            notes.append(f"ApplicationSet {app['appset']}: entspricht dem Template, die Regel wird entfernt")
+    elif app["managed_by"]:
+        notes.append(f"wird von {app['managed_by']} verwaltet, die Änderung kann dort zurückgesetzt werden")
+    return Change(app, index, source, previous, target, build_patch(app, index, target), notes, hold)
 
 
 def cells(app: dict) -> list:
@@ -138,15 +153,49 @@ def render_plan(changes: list[Change], skipped: list[tuple[dict, str]], remote: 
         ui.console.print(Text(f"  {app['name']}  übersprungen ({reason})", style="dim"))
 
 
-def apply(changes: list[Change]) -> None:
+def apply(changes: list[Change]) -> list[Change]:
+    done = []
     for change in changes:
         name = change.app["name"]
+        appset = change.app["appset"]
         try:
+            if appset and change.hold:
+                argocd_apps.set_hold(appset, name, change.pointer, True)
             argocd_apps.patch_app(name, change.patch, "json")
+            if appset and change.hold is False:
+                argocd_apps.set_hold(appset, name, change.pointer, False)
         except CubiError as exc:
             ui.console.print(Text(f"✖ {name}: {exc}", style="red"))
             continue
         ui.console.print(Text(f"✔ {name}: {change.previous} → {change.target}", style="green"))
+        done.append(change)
+    return done
+
+
+def verify(changes: list[Change]) -> None:
+    if not changes:
+        return
+    current = argocd_apps.recheck([change.app["name"] for change in changes])
+    checks = []
+    for change in changes:
+        app = current.get(change.app["name"])
+        revision = None
+        if app is not None and change.index < len(app["sources"]):
+            revision = str(app["sources"][change.index].get("targetRevision") or "HEAD")
+        checks.append((change.app["name"], revision == change.target))
+    argocd_apps.report_checks(checks, "wurde zurückgesetzt, ein Controller überschreibt targetRevision")
+
+
+def template_for(app: dict, index: int, cache: dict) -> str | None:
+    if not app["appset"]:
+        return None
+    key = (app["appset"], app["multi"], index)
+    if key not in cache:
+        try:
+            cache[key] = argocd_apps.template_revision(*key)
+        except CubiError:
+            cache[key] = None
+    return cache[key]
 
 
 def ask_target() -> str | None:
@@ -183,6 +232,7 @@ def run() -> None:
             return
     changes: list[Change] = []
     skipped: list[tuple[dict, str]] = []
+    templates: dict = {}
     for app in selection:
         if not app["sources"]:
             skipped.append((app, "keine Source"))
@@ -190,7 +240,7 @@ def run() -> None:
         index = choose_source(app)
         if index is None:
             return
-        result = plan(app, index, target)
+        result = plan(app, index, target, template_for(app, index, templates))
         if isinstance(result, Change):
             changes.append(result)
         else:
@@ -202,4 +252,4 @@ def run() -> None:
         ui.info("Nichts zu tun.")
         return
     if ui.confirm(f"{len(changes)} App(s) auf {target} umstellen?"):
-        apply(changes)
+        verify(apply(changes))

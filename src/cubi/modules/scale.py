@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from rich.text import Text
 
 from .. import argocd_apps, shell, ui
-from ..argocd_apps import SCALE_ANNOTATION, policy_cell, policy_flags
+from ..argocd_apps import appset_note, policy_cell, policy_flags
 from ..errors import CubiError
 from ..ui import Item
 
@@ -33,11 +33,17 @@ class Workload:
 class Change:
     app: dict
     action: str
-    patch: dict
+    state_value: str | None
+    pause: bool
+    resume: dict | None
     ops: list[tuple[Workload, int]]
     before: str
     after: str
     notes: list[str] = field(default_factory=list)
+
+    @property
+    def state_key(self) -> str:
+        return f"{self.app['name']}.scale"
 
 
 def from_key(key: str) -> Workload:
@@ -67,12 +73,6 @@ def fetch_live(items: list[Workload]) -> dict[str, int]:
     return live
 
 
-def owner_note(app: dict) -> list[str]:
-    if app["managed_by"]:
-        return [f"wird von {app['managed_by']} verwaltet, die Änderung kann dort zurückgesetzt werden"]
-    return []
-
-
 def plan_down(app: dict, live: dict[str, int]) -> Change | str:
     items = workloads(app)
     if not items:
@@ -83,27 +83,29 @@ def plan_down(app: dict, live: dict[str, int]) -> Change | str:
     memory = app["scale"] or {"replicas": {}, "autoSync": None}
     replicas = {**memory["replicas"], **running}
     automated = app["automated"] if app["automated"] is not None else memory["autoSync"]
-    patch: dict = {"metadata": {"annotations": {SCALE_ANNOTATION: json.dumps({"replicas": replicas, "autoSync": automated}, sort_keys=True)}}}
+    state_value = json.dumps({"replicas": replicas, "autoSync": automated}, sort_keys=True)
+    pause = app["automated"] is not None
     notes = []
-    if app["automated"] is not None:
-        patch["spec"] = {"syncPolicy": {"automated": None}}
+    if pause:
         flags = policy_flags(app["automated"])
         notes.append(f"Auto-Sync wird deaktiviert ({flags or 'ohne prune/selfHeal'}), sonst stellt ArgoCD die Pods wieder her")
+        notes.extend(appset_note(app, "die Sync-Policy"))
     ops = [(from_key(key), 0) for key in running]
-    return Change(app, DOWN, patch, ops, f"{sum(running.values())} Pods", "0 Pods", [*notes, *owner_note(app)])
+    return Change(app, DOWN, state_value, pause, None, ops, f"{sum(running.values())} Pods", "0 Pods", notes)
 
 
 def plan_up(app: dict) -> Change | str:
     memory = app["scale"]
     if memory is None:
         return "keine gemerkten Replikas"
-    patch: dict = {"metadata": {"annotations": {SCALE_ANNOTATION: None}}}
+    resume = memory["autoSync"] if app["automated"] is None else None
     notes = []
-    if memory["autoSync"] is not None and app["automated"] is None:
-        patch["spec"] = {"syncPolicy": {"automated": memory["autoSync"]}}
-        notes.append(f"Auto-Sync wird wieder aktiviert ({policy_flags(memory['autoSync']) or 'ohne prune/selfHeal'})")
+    if resume is not None:
+        notes.append(f"Auto-Sync wird wieder aktiviert ({policy_flags(resume) or 'ohne prune/selfHeal'})")
+        if app["appset"]:
+            notes.append(f"ApplicationSet {app['appset']}: Regel wird entfernt, der Controller setzt die Policy aus dem Template")
     ops = [(from_key(key), count) for key, count in memory["replicas"].items()]
-    return Change(app, UP, patch, ops, "0 Pods", f"{sum(memory['replicas'].values())} Pods", [*notes, *owner_note(app)])
+    return Change(app, UP, None, False, resume, ops, "0 Pods", f"{sum(memory['replicas'].values())} Pods", notes)
 
 
 def cells_for(action: str):
@@ -155,24 +157,54 @@ def scale_all(change: Change) -> bool:
     return not failed
 
 
-def apply(changes: list[Change]) -> None:
+def apply(changes: list[Change]) -> list[Change]:
+    done = []
     for change in changes:
         name = change.app["name"]
         try:
             if change.action == DOWN:
-                argocd_apps.patch_app(name, change.patch, "merge")
-                done = scale_all(change)
+                argocd_apps.save_state(change.state_key, change.state_value)
+                if change.pause:
+                    argocd_apps.pause_auto_sync(change.app)
+                finished = scale_all(change)
             else:
-                done = scale_all(change)
-                if done:
-                    argocd_apps.patch_app(name, change.patch, "merge")
+                finished = scale_all(change)
+                if finished:
+                    if change.resume is not None:
+                        argocd_apps.resume_auto_sync(change.app, change.resume)
+                    argocd_apps.save_state(change.state_key, None)
         except CubiError as exc:
             ui.console.print(Text(f"✖ {name}: {exc}", style="red"))
             continue
-        if done:
+        if finished:
             ui.console.print(Text(f"✔ {name}: {change.before} → {change.after}", style="green"))
+            done.append(change)
         elif change.action == UP:
             ui.console.print(Text(f"  {name}: gemerkte Replikas bleiben erhalten, erneut ausführen", style="yellow"))
+    return done
+
+
+def verify(changes: list[Change]) -> None:
+    if not changes:
+        return
+    current = argocd_apps.recheck([change.app["name"] for change in changes])
+    checks = []
+    for change in changes:
+        app = current.get(change.app["name"])
+        if app is None:
+            checks.append((change.app["name"], False))
+            continue
+        try:
+            live = fetch_live([workload for workload, _ in change.ops])
+        except CubiError:
+            checks.append((change.app["name"], False))
+            continue
+        if change.action == DOWN:
+            ok = all(live.get(workload.key, 0) == 0 for workload, _ in change.ops)
+        else:
+            ok = all(live.get(workload.key) == count for workload, count in change.ops)
+        checks.append((change.app["name"], ok))
+    argocd_apps.report_checks(checks, "Replikas weichen ab, ein Controller überschreibt die Änderung")
 
 
 def run() -> None:
@@ -186,7 +218,7 @@ def run() -> None:
     if action is None:
         return
     title = "Apps: auf 0 Pods stellen" if action == DOWN else "Apps: Pods wiederherstellen"
-    selection = argocd_apps.choose_apps(title, COLUMNS, cells_for(action))
+    selection = argocd_apps.choose_apps(title, COLUMNS, cells_for(action), with_state=True)
     if not selection:
         return
     changes: list[Change] = []
@@ -208,4 +240,4 @@ def run() -> None:
         return
     question = f"{len(changes)} App(s) auf 0 Pods stellen?" if action == DOWN else f"{len(changes)} App(s) wiederherstellen?"
     if ui.confirm(question):
-        apply(changes)
+        verify(apply(changes))
