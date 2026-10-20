@@ -36,10 +36,9 @@ def targets(group: str, entries: object) -> list[dict]:
 
 def choose_target(group: str, entries: object) -> None:
     items = [Item(entry["name"], entry["ssh"], describe(entry["ssh"])) for entry in targets(group, entries)]
-    alias = ui.menu(f"Connect · {group_title(group)}", items)
+    alias = ui.select(f"Connect · {group_title(group)}", items)
     if alias is None:
         return
-    ui.console.clear()
     shell.replace(["ssh", alias])
 
 
@@ -50,7 +49,7 @@ def run() -> None:
     items = [Item(group_title(key), key, f"{len(entries or [])} Ziele") for key, entries in groups.items()]
     group = None
     while True:
-        group = ui.menu("Connect", items, initial=group)
+        group = ui.select("Connect", items, initial=group)
         if group is None:
             return
         ui.guard(choose_target, group, groups[group])

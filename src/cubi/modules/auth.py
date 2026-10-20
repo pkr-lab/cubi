@@ -33,7 +33,7 @@ def argocd_rows() -> list[Row]:
                 status = bad("Token ungültig")
             else:
                 status = bad("nicht eingeloggt")
-        rows.append(Row([Text("ArgoCD"), Text(context["name"]), status], ("argocd", context["name"])))
+        rows.append(Row([Text("ArgoCD"), Text(context["name"]), status], ("argocd", context["name"]), context["name"]))
     return rows
 
 
@@ -83,7 +83,7 @@ def load() -> TableData:
     return TableData(rows)
 
 
-def argocd_login(name: str, mode: str) -> None:
+def argocd_login(name: str) -> None:
     context = next((item for item in argocd_config.configured_contexts() if item["name"] == name), None)
     if context is None:
         raise CubiError(f"Unbekannter ArgoCD-Kontext: {name}")
@@ -94,9 +94,7 @@ def argocd_login(name: str, mode: str) -> None:
         cmd.append("--insecure")
     if context["server"] != name:
         cmd += ["--name", name]
-    if mode == "sso":
-        cmd.append("--sso")
-    elif context["username"]:
+    if context["username"]:
         cmd += ["--username", str(context["username"])]
     ui.run_command(cmd, f"ArgoCD-Login · {name}")
 
@@ -110,21 +108,25 @@ def argocd_menu(name: str) -> None:
     context = next((item for item in argocd_config.configured_contexts() if item["name"] == name), None)
     actions = []
     if context is not None and not context["core"]:
-        actions.append(("Login mit Passwort", lambda: argocd_login(name, "password")))
-        actions.append(("Login mit SSO", lambda: argocd_login(name, "sso")))
+        actions.append(("Login mit Passwort", lambda: argocd_login(name)))
     actions.append(("Kontext aktivieren", lambda: argocd_activate(name)))
     ui.action_menu(f"ArgoCD · {name}", actions)
+
+
+def github_command(cmd: list[str]) -> None:
+    ui.info("Der Browser wird nicht geöffnet. Den angezeigten Code unter https://github.com/login/device eingeben.")
+    ui.run_command(cmd, env=shell.no_browser())
 
 
 def github_menu() -> None:
     ui.action_menu(
         "GitHub",
         [
-            ("Login im Browser", lambda: ui.run_command(["gh", "auth", "login", "-h", "github.com"])),
-            ("Scopes erneuern", lambda: ui.run_command(["gh", "auth", "refresh", "-h", "github.com"])),
+            ("Login (Code im Terminal)", lambda: github_command(["gh", "auth", "login", "-h", "github.com"])),
+            ("Scopes erneuern", lambda: github_command(["gh", "auth", "refresh", "-h", "github.com"])),
             (
                 "Projekt-Scope aktivieren (für Kanban-Board)",
-                lambda: ui.run_command(["gh", "auth", "refresh", "-h", "github.com", "-s", "project,read:project"]),
+                lambda: github_command(["gh", "auth", "refresh", "-h", "github.com", "-s", "project,read:project"]),
             ),
         ],
     )
@@ -144,7 +146,7 @@ def tailscale_menu() -> None:
 def run() -> None:
     selected = None
     while True:
-        key, value = ui.table_view("Login", ["Dienst", "Ziel", "Status"], load, initial=selected)
+        key, value = ui.table_select("Login", ["Dienst", "Ziel", "Status"], load, initial=selected)
         if key != "enter":
             return
         selected = value

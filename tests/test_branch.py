@@ -1,0 +1,134 @@
+import json
+import subprocess
+import unittest
+from unittest import mock
+
+import helpers
+
+from cubi.errors import CubiError
+from cubi.modules import branch
+from test_autosync import application
+
+SINGLE = {"repoURL": "https://github.com/pkr-lab/capulus-core.git", "path": "apps/demo", "targetRevision": "main"}
+MULTI = [
+    {"repoURL": "https://github.com/pkr-lab/charts.git", "path": "chart", "targetRevision": "v1"},
+    {"repoURL": "https://github.com/pkr-lab/values.git", "ref": "values", "targetRevision": "main"},
+]
+
+
+def completed(code=0, stdout="", stderr=""):
+    return subprocess.CompletedProcess([], code, stdout, stderr)
+
+
+class PatchTest(unittest.TestCase):
+    def test_single_source_patch_targets_spec_source(self):
+        app = application()
+        patch = branch.build_patch(app, 0, "feature/x")
+        self.assertEqual(patch[1], {"op": "add", "path": "/spec/source/targetRevision", "value": "feature/x"})
+        self.assertEqual(patch[0], {"op": "test", "path": "/spec/source/repoURL", "value": SINGLE["repoURL"]})
+
+    def test_multi_source_patch_targets_chosen_index(self):
+        app = application(sources=MULTI)
+        patch = branch.build_patch(app, 1, "dev")
+        self.assertEqual(patch[1]["path"], "/spec/sources/1/targetRevision")
+        self.assertEqual(patch[0]["value"], MULTI[1]["repoURL"])
+
+    def test_single_entry_sources_list_still_uses_sources_path(self):
+        app = application(sources=MULTI[:1])
+        self.assertEqual(branch.build_patch(app, 0, "dev")[1]["path"], "/spec/sources/0/targetRevision")
+
+    def test_plan_skips_app_already_on_target(self):
+        self.assertIn("main", branch.plan(application(), 0, "main"))
+
+    def test_plan_records_previous_branch(self):
+        change = branch.plan(application(), 0, "dev")
+        self.assertEqual((change.previous, change.target), ("main", "dev"))
+
+    def test_missing_target_revision_is_head(self):
+        app = application(sources=[{"repoURL": "https://example.com/r.git"}])
+        self.assertEqual(branch.plan(app, 0, "main").previous, "HEAD")
+
+
+class NotesTest(unittest.TestCase):
+    def test_auto_sync_note_mentions_immediate_sync(self):
+        change = branch.plan(application(automated={"selfHeal": True}), 0, "dev")
+        self.assertTrue(any("synct sofort" in note for note in change.notes))
+
+    def test_prune_gets_extra_warning(self):
+        change = branch.plan(application(automated={"prune": True}), 0, "dev")
+        self.assertTrue(any("prune" in note and "gelöscht" in note for note in change.notes))
+
+    def test_manual_app_has_no_notes(self):
+        self.assertEqual(branch.plan(application(), 0, "dev").notes, [])
+
+
+class DisplayTest(unittest.TestCase):
+    def test_off_target_detects_other_branch(self):
+        self.assertFalse(branch.off_target(application()))
+        self.assertTrue(branch.off_target(application(sources=MULTI)))
+
+    def test_cells_show_branch_and_policy(self):
+        cells = branch.cells(application(automated={"prune": True}))
+        self.assertEqual([cell.plain for cell in cells], ["demo", "main", "auto (prune)", "pkr-lab/capulus-core"])
+
+    def test_multi_source_branches_joined(self):
+        self.assertEqual(branch.cells(application(sources=MULTI))[1].plain, "v1 | main")
+
+
+class RemoteCheckTest(unittest.TestCase):
+    def test_github_branch_found(self):
+        with mock.patch.object(branch.shell, "capture_json", return_value=[{"ref": "refs/heads/dev"}]):
+            self.assertTrue(branch.ref_exists("https://github.com/pkr-lab/x.git", "dev"))
+
+    def test_github_branch_missing(self):
+        with mock.patch.object(branch.shell, "capture_json", return_value=[{"ref": "refs/heads/dev-2"}]):
+            self.assertFalse(branch.ref_exists("https://github.com/pkr-lab/x.git", "dev"))
+
+    def test_github_tag_counts(self):
+        answers = [[], [{"ref": "refs/tags/v1"}]]
+        with mock.patch.object(branch.shell, "capture_json", side_effect=answers):
+            self.assertTrue(branch.ref_exists("git@github.com:pkr-lab/x.git", "v1"))
+
+    def test_github_error_is_unknown(self):
+        with mock.patch.object(branch.shell, "capture_json", side_effect=CubiError("404")):
+            self.assertIsNone(branch.ref_exists("https://github.com/pkr-lab/x.git", "dev"))
+
+    def test_commit_id_is_not_reported_missing(self):
+        with mock.patch.object(branch.shell, "capture_json", return_value=[]):
+            self.assertIsNone(branch.ref_exists("https://github.com/pkr-lab/x.git", "abc1234"))
+
+    def test_generic_remote_uses_ls_remote(self):
+        with mock.patch.object(branch.shell, "capture", return_value=completed(0)) as capture:
+            self.assertTrue(branch.ref_exists("https://git.example.com/r.git", "dev"))
+        command = capture.call_args.args[0]
+        self.assertEqual(command[:3], ["git", "ls-remote", "--exit-code"])
+        self.assertEqual(capture.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_generic_remote_missing_and_unreachable(self):
+        with mock.patch.object(branch.shell, "capture", return_value=completed(2)):
+            self.assertFalse(branch.ref_exists("https://git.example.com/r.git", "dev"))
+        with mock.patch.object(branch.shell, "capture", return_value=completed(128, stderr="fatal")):
+            self.assertIsNone(branch.ref_exists("https://git.example.com/r.git", "dev"))
+
+    def test_remote_checked_once_per_repo_and_branch(self):
+        first = branch.plan(application("a"), 0, "dev")
+        second = branch.plan(application("b"), 0, "dev")
+        with mock.patch.object(branch, "ref_exists", return_value=True) as check:
+            result = branch.check_remote([first, second])
+        self.assertEqual(check.call_count, 1)
+        self.assertEqual(list(result.values()), [True])
+
+
+class ApplyTest(unittest.TestCase):
+    def test_apply_sends_json_patch_via_kubectl(self):
+        change = branch.plan(application(), 0, "dev")
+        with mock.patch("cubi.argocd_apps.shell.capture", return_value=completed(0)) as capture, mock.patch.object(branch.ui, "console"):
+            branch.apply([change])
+        command = capture.call_args.args[0]
+        self.assertEqual(command[:4], ["kubectl", "patch", "applications.argoproj.io", "demo"])
+        self.assertIn("--type=json", command)
+        self.assertEqual(json.loads(command[-1]), change.patch)
+
+
+if __name__ == "__main__":
+    unittest.main()

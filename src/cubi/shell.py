@@ -39,10 +39,23 @@ def first_line(text: str) -> str:
     return lines[0] if lines else ""
 
 
-def capture(cmd: Sequence[str], timeout: float | None = 30, cwd: str | None = None) -> subprocess.CompletedProcess:
+def child_env(extra: dict[str, str] | None) -> dict[str, str] | None:
+    return {**os.environ, **extra} if extra else None
+
+
+def no_browser() -> dict[str, str]:
+    return {"BROWSER": "true", "GH_BROWSER": "true"}
+
+
+def capture(
+    cmd: Sequence[str],
+    timeout: float | None = 30,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     require(cmd[0])
     try:
-        return subprocess.run(list(cmd), capture_output=True, text=True, timeout=timeout, cwd=cwd)
+        return subprocess.run(list(cmd), capture_output=True, text=True, timeout=timeout, cwd=cwd, env=child_env(env))
     except subprocess.TimeoutExpired:
         raise CubiError(f"Zeitüberschreitung bei: {' '.join(cmd)}")
 
@@ -69,10 +82,10 @@ def merge_output(result: subprocess.CompletedProcess) -> str:
     return "\n".join(part for part in parts if part)
 
 
-def run(cmd: Sequence[str], cwd: str | None = None) -> int:
+def run(cmd: Sequence[str], cwd: str | None = None, env: dict[str, str] | None = None) -> int:
     require(cmd[0])
     try:
-        return subprocess.run(list(cmd), cwd=cwd).returncode
+        return subprocess.run(list(cmd), cwd=cwd, env=child_env(env)).returncode
     except KeyboardInterrupt:
         return 130
 

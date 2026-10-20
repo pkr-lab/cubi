@@ -67,7 +67,7 @@ def release_menu(namespace: str, name: str) -> None:
 def run() -> None:
     selected = None
     while True:
-        key, value = ui.table_view(
+        key, value = ui.table_select(
             "Helm · Releases",
             ["Release", "Namespace", "Rev", "Status", "Chart", "App-Version", "Alter"],
             load,
