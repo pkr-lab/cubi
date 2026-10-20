@@ -117,7 +117,7 @@ class InlineBehaviourTest(unittest.TestCase):
         self.assertInline(output)
         self.assertIn("cubi · Bereich wählen", clean(output))
         self.assertIn("Auto-Sync", clean(output))
-        self.assertIn("Branch", clean(output))
+        self.assertIn("Feature-Testing", clean(output))
 
     def test_terminal_mode_restored_after_normal_exit(self):
         output, _ = run_in_pty(MODES, [KEY_ENTER])
