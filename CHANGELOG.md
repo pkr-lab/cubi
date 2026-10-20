@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/pkr-lab/cubi/compare/v1.0.0...v1.1.0) (2026-10-20)
+
+### Features
+
+* **scale:** implement scaling functionality for ArgoCD applications with tests ([800f144](https://github.com/pkr-lab/cubi/commit/800f1448f8f8b80019ce3db4eb0c942a218515fe))
+
 ## 1.0.0 (2026-10-18)
 
 ### Features
