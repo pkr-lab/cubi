@@ -7,7 +7,7 @@ import helpers
 
 from cubi.errors import CubiError
 from cubi.modules import branch
-from test_autosync import application
+from test_autosync import APPSET, application
 
 SINGLE = {"repoURL": "https://github.com/pkr-lab/capulus-core.git", "path": "apps/demo", "targetRevision": "main"}
 MULTI = [
@@ -119,15 +119,96 @@ class RemoteCheckTest(unittest.TestCase):
         self.assertEqual(list(result.values()), [True])
 
 
+class AppsetPlanTest(unittest.TestCase):
+    def test_other_branch_is_held_by_rule(self):
+        change = branch.plan(application(owners=APPSET), 0, "dev", "main")
+        self.assertTrue(change.hold)
+        self.assertEqual(change.pointer, "/spec/source/targetRevision")
+        self.assertTrue(any("ignoreApplicationDifferences" in note for note in change.notes))
+
+    def test_template_branch_releases_rule(self):
+        change = branch.plan(application(owners=APPSET), 0, "main", "main")
+        self.assertIsInstance(change, str)
+        change = branch.plan(application(owners=APPSET, sources=[{"repoURL": "https://x/r.git", "targetRevision": "dev"}]), 0, "main", "main")
+        self.assertFalse(change.hold)
+        self.assertTrue(any("Regel wird entfernt" in note for note in change.notes))
+
+    def test_unknown_template_holds(self):
+        self.assertTrue(branch.plan(application(owners=APPSET), 0, "main-x", None).hold)
+
+    def test_plain_app_has_no_hold(self):
+        self.assertIsNone(branch.plan(application(), 0, "dev").hold)
+
+    def test_multi_source_pointer(self):
+        change = branch.plan(application(owners=APPSET, sources=MULTI), 1, "dev", "main")
+        self.assertEqual(change.pointer, "/spec/sources/1/targetRevision")
+
+    def test_template_lookup_is_cached_per_appset(self):
+        app = application(owners=APPSET)
+        cache = {}
+        with mock.patch.object(branch.argocd_apps, "template_revision", return_value="main") as lookup:
+            self.assertEqual(branch.template_for(app, 0, cache), "main")
+            branch.template_for(app, 0, cache)
+        self.assertEqual(lookup.call_count, 1)
+        self.assertIsNone(branch.template_for(application(), 0, cache))
+
+
 class ApplyTest(unittest.TestCase):
-    def test_apply_sends_json_patch_via_kubectl(self):
+    def manager(self):
+        manager = mock.Mock()
+        patches = [
+            mock.patch.object(branch.argocd_apps, "set_hold", manager.hold),
+            mock.patch.object(branch.argocd_apps, "patch_app", manager.patch),
+            mock.patch.object(branch.ui, "console"),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        return manager
+
+    def test_plain_app_is_patched_with_json_patch(self):
+        manager = self.manager()
         change = branch.plan(application(), 0, "dev")
-        with mock.patch("cubi.argocd_apps.shell.capture", return_value=completed(0)) as capture, mock.patch.object(branch.ui, "console"):
-            branch.apply([change])
-        command = capture.call_args.args[0]
-        self.assertEqual(command[:4], ["kubectl", "patch", "applications.argoproj.io", "demo"])
-        self.assertIn("--type=json", command)
-        self.assertEqual(json.loads(command[-1]), change.patch)
+        self.assertEqual(branch.apply([change]), [change])
+        self.assertEqual(manager.patch.call_args.args, ("demo", change.patch, "json"))
+        manager.hold.assert_not_called()
+
+    def test_held_branch_sets_rule_before_patching(self):
+        manager = self.manager()
+        change = branch.plan(application(owners=APPSET), 0, "dev", "main")
+        branch.apply([change])
+        self.assertEqual([call[0] for call in manager.mock_calls], ["hold", "patch"])
+        self.assertEqual(manager.hold.call_args.args, ("apps", "demo", "/spec/source/targetRevision", True))
+
+    def test_reset_to_template_patches_then_releases_rule(self):
+        manager = self.manager()
+        change = branch.plan(application(owners=APPSET, sources=[{"repoURL": "https://x/r.git", "targetRevision": "dev"}]), 0, "main", "main")
+        branch.apply([change])
+        self.assertEqual([call[0] for call in manager.mock_calls], ["patch", "hold"])
+        self.assertEqual(manager.hold.call_args.args[3], False)
+
+    def test_failed_rule_prevents_patch(self):
+        manager = self.manager()
+        manager.hold.side_effect = branch.CubiError("conflict")
+        change = branch.plan(application(owners=APPSET), 0, "dev", "main")
+        self.assertEqual(branch.apply([change]), [])
+        manager.patch.assert_not_called()
+
+
+class VerifyTest(unittest.TestCase):
+    def run_verify(self, change, current):
+        with mock.patch.object(branch.argocd_apps, "recheck", return_value=current), mock.patch.object(branch.argocd_apps, "report_checks") as report:
+            branch.verify([change])
+        return report.call_args.args[0]
+
+    def test_branch_holds(self):
+        change = branch.plan(application(), 0, "dev")
+        moved = application(sources=[{"repoURL": "https://x/r.git", "targetRevision": "dev"}])
+        self.assertEqual(self.run_verify(change, {"demo": moved}), [("demo", True)])
+
+    def test_reverted_branch_is_reported(self):
+        change = branch.plan(application(), 0, "dev")
+        self.assertEqual(self.run_verify(change, {"demo": application()}), [("demo", False)])
 
 
 if __name__ == "__main__":
