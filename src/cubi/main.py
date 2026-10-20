@@ -3,7 +3,7 @@ from typing import Callable
 
 from . import ui
 from .errors import CubiError
-from .modules import argocd, auth, autosync, branch, connect, github, helm, kube, tailscale, tokens
+from .modules import argocd, auth, autosync, branch, connect, github, helm, kube, scale, tailscale, tokens
 from .ui import Item
 
 MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
@@ -11,6 +11,7 @@ MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
     "argocd": (argocd.run, "ArgoCD", "Status aller Apps, Sync, Diff"),
     "autosync": (autosync.run, "Auto-Sync", "ArgoCD Auto-Sync deaktivieren/aktivieren"),
     "branch": (branch.run, "Branch", "ArgoCD-Apps auf anderen Branch umstellen"),
+    "scale": (scale.run, "Pods skalieren", "ArgoCD-Apps auf 0 Pods stellen und wiederherstellen"),
     "tailscale": (tailscale.run, "Tailscale", "Geräte, Ping, SSH, Up/Down"),
     "github": (github.run, "GitHub", "Runs, Pull Requests, Issues, Kanban-Board"),
     "kubernetes": (kube.run, "Kubernetes", "Pods, Nodes, Namespaces"),

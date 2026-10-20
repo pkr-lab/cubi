@@ -11,7 +11,7 @@ from .. import argocd_config, shell, ui
 from ..argocd_apps import choose_apps, fetch_apps, policy_label, revision_label
 from ..timeutil import age, parse_iso
 from ..ui import Item, Row, TableData
-from . import autosync, branch, github
+from . import autosync, branch, github, scale
 
 SYNC_STYLES = {
     "Synced": "green",
@@ -255,7 +255,7 @@ def run() -> None:
             f"ArgoCD · Kontext {argocd_config.current_context()}",
             ["App", "Projekt", "Sync", "Health"],
             make_loader(state),
-            hotkeys={"f": "Filter", "c": "Kontext", "m": "Mehrere syncen", "s": "Auto-Sync", "b": "Branch"},
+            hotkeys={"f": "Filter", "c": "Kontext", "m": "Mehrere syncen", "s": "Auto-Sync", "b": "Branch", "z": "Pods skalieren"},
             interval=10,
             initial=selected,
         )
@@ -271,6 +271,8 @@ def run() -> None:
             ui.guard(autosync.run)
         elif key == "b":
             ui.guard(branch.run)
+        elif key == "z":
+            ui.guard(scale.run)
         elif key == "enter":
             selected = value
             app = state["apps"].get(value)

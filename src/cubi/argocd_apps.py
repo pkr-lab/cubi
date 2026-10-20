@@ -9,6 +9,7 @@ from .ui import Row, TableData
 
 APP_RESOURCE = "applications.argoproj.io"
 PREVIOUS_SYNC_ANNOTATION = "cubi.pkr-lab.io/previous-automated-sync"
+SCALE_ANNOTATION = "cubi.pkr-lab.io/previous-scale"
 TRACKING_ANNOTATION = "argocd.argoproj.io/tracking-id"
 DEFAULT_BRANCH = "main"
 
@@ -30,6 +31,21 @@ def stored_sync(annotations: dict) -> dict | None:
     except ValueError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def stored_scale(annotations: dict) -> dict | None:
+    value = annotations.get(SCALE_ANNOTATION)
+    if not value:
+        return None
+    try:
+        data = json.loads(value)
+    except ValueError:
+        return None
+    replicas = data.get("replicas") if isinstance(data, dict) else None
+    if not isinstance(replicas, dict) or not replicas:
+        return None
+    auto = data.get("autoSync")
+    return {"replicas": {str(key): int(count) for key, count in replicas.items()}, "autoSync": auto if isinstance(auto, dict) else None}
 
 
 def managed_by(metadata: dict) -> str | None:
@@ -60,6 +76,7 @@ def normalize(item: dict) -> dict[str, Any]:
         "multi": bool(spec.get("sources")),
         "automated": automated if isinstance(automated, dict) else None,
         "stored": stored_sync(metadata.get("annotations") or {}),
+        "scale": stored_scale(metadata.get("annotations") or {}),
         "managed_by": managed_by(metadata),
         "raw": item,
     }
