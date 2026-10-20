@@ -2,16 +2,16 @@ import sys
 from typing import Callable
 
 from . import ui
-from .errors import CubiError
-from .modules import argocd, auth, autosync, branch, connect, github, helm, kube, scale, tailscale, tokens
+from .errors import CubiError, Finished
+from .modules import argocd, auth, autosync, connect, feature_testing, github, helm, kube, scale, tailscale, tokens
 from .ui import Item
 
 MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
     "connect": (connect.run, "Connect", "SSH zu VMs und Hosts"),
     "argocd": (argocd.run, "ArgoCD", "Status aller Apps, Sync, Diff"),
     "autosync": (autosync.run, "Auto-Sync", "ArgoCD Auto-Sync deaktivieren/aktivieren"),
-    "branch": (branch.run, "Branch", "ArgoCD-Apps auf anderen Branch umstellen"),
-    "scale": (scale.run, "Pods skalieren", "ArgoCD-Apps auf 0 Pods stellen und wiederherstellen"),
+    "feature-testing": (feature_testing.run, "Feature-Testing", "ArgoCD-Apps auf einen Feature-Branch umstellen"),
+    "scale": (scale.run, "Pods skalieren", "ArgoCD-Apps auf 0 oder eine eigene Anzahl Pods stellen, wiederherstellen"),
     "tailscale": (tailscale.run, "Tailscale", "Geräte, Ping, SSH, Up/Down"),
     "github": (github.run, "GitHub", "Runs, Pull Requests, Issues, Kanban-Board"),
     "kubernetes": (kube.run, "Kubernetes", "Pods, Nodes, Namespaces"),
@@ -23,6 +23,8 @@ MODULES: dict[str, tuple[Callable[[], None], str, str]] = {
 ALIASES = {
     "argo": "argocd",
     "sync": "autosync",
+    "branch": "feature-testing",
+    "ft": "feature-testing",
     "ts": "tailscale",
     "gh": "github",
     "k8s": "kubernetes",
@@ -34,15 +36,20 @@ ALIASES = {
 
 def usage() -> str:
     lines = ["Aufruf: cubi [bereich]", "", "Bereiche:"]
+    width = max(len(name) for name in MODULES) + 2
     for name, (_, _, hint) in MODULES.items():
-        lines.append(f"  {name:<12}{hint}")
+        lines.append(f"  {name:<{width}}{hint}")
     lines.append("")
     lines.append("Ohne Bereich startet das interaktive Hauptmenü.")
     return "\n".join(lines)
 
 
-def launch(name: str) -> None:
-    ui.guard(MODULES[name][0])
+def launch(name: str) -> bool:
+    try:
+        ui.guard(MODULES[name][0])
+    except Finished:
+        return True
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,4 +78,5 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         if choice is None or choice == "exit":
             return 0
-        launch(choice)
+        if launch(choice):
+            return 0

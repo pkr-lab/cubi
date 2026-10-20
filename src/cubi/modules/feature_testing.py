@@ -6,7 +6,7 @@ from rich.text import Text
 
 from .. import argocd_apps, shell, ui
 from ..argocd_apps import DEFAULT_BRANCH, policy_cell, policy_flags, revision_label, short_repo
-from ..errors import CubiError
+from ..errors import CubiError, Finished
 from ..ui import Item
 from . import github
 
@@ -212,7 +212,7 @@ def ask_target() -> str | None:
 
 def run() -> None:
     mode = ui.select(
-        "Branch",
+        "Feature-Testing",
         [
             Item("Branch umstellen", SWITCH, "spec.source.targetRevision ändern"),
             Item(f"Auf {DEFAULT_BRANCH} zurücksetzen", RESET, f"Apps abseits von {DEFAULT_BRANCH} sind vorgewählt"),
@@ -252,4 +252,7 @@ def run() -> None:
         ui.info("Nichts zu tun.")
         return
     if ui.confirm(f"{len(changes)} App(s) auf {target} umstellen?"):
-        verify(apply(changes))
+        done = apply(changes)
+        verify(done)
+        if done:
+            raise Finished

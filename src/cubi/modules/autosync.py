@@ -5,7 +5,7 @@ from rich.text import Text
 
 from .. import argocd_apps, ui
 from ..argocd_apps import appset_note, policy_cell, policy_flags, policy_label
-from ..errors import CubiError
+from ..errors import CubiError, Finished
 from ..ui import Item
 
 DISABLE = "disable"
@@ -143,4 +143,7 @@ def run() -> None:
         ui.info("Nichts zu tun.")
         return
     if ui.confirm(f"{len(changes)} App(s) ändern?"):
-        verify(apply(changes))
+        done = apply(changes)
+        verify(done)
+        if done:
+            raise Finished

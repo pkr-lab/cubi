@@ -203,11 +203,11 @@ class RenderTest(unittest.TestCase):
             self.assertNotIn("\n", line.plain)
 
     def test_footer_wraps_instead_of_truncating(self):
-        prompt = prompt_for(hotkeys={"f": "Filter", "c": "Kontext", "m": "Mehrere syncen", "s": "Auto-Sync", "b": "Branch"}, loader=lambda: TableData(), interval=10)
+        prompt = prompt_for(hotkeys={"f": "Filter", "c": "Kontext", "m": "Mehrere syncen", "s": "Auto-Sync", "t": "Feature-Testing"}, loader=lambda: TableData(), interval=10)
         footer = prompt.footer(60)
         self.assertGreater(len(footer), 1)
         joined = " ".join(line.plain for line in footer)
-        for part in ("Filter", "Kontext", "Auto-Sync", "Branch", "Esc Abbrechen"):
+        for part in ("Filter", "Kontext", "Auto-Sync", "Feature-Testing", "Esc Abbrechen"):
             self.assertIn(part, joined)
 
     def test_header_shown_for_columns(self):
