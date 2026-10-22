@@ -21,15 +21,8 @@ argocd:
   contexts:
     - name: kubernetes
       core: true
-    - name: homeserver:30080
-      server: homeserver:30080
-      plaintext: true
-      insecure: true
-      username: admin
-    - name: 192.168.178.94:30080
-      server: 192.168.178.94:30080
-      plaintext: true
-      insecure: true
+    - name: homeserver
+      server: argocd.tech.homeserver
       username: admin
 
 github:
