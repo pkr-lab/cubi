@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/pkr-lab/cubi/compare/v1.1.0...v1.2.0) (2026-10-22)
+
+### Features
+
+* **install:** enhance PATH setup in install script for better user experience ([3c4cc68](https://github.com/pkr-lab/cubi/commit/3c4cc68c85f90679ddf6f1286b5dfd5216a0709e))
+
 ## [1.1.0](https://github.com/pkr-lab/cubi/compare/v1.0.0...v1.1.0) (2026-10-20)
 
 ### Features
