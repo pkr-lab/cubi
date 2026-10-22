@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .. import config, shell, ui
 from ..errors import CubiError
 from ..ui import Item
