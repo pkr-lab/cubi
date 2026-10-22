@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/pkr-lab/cubi/compare/v1.2.0...v1.3.0) (2026-10-22)
+
+### Features
+
+* add future annotations import to multiple modules for improved type hinting ([885e51d](https://github.com/pkr-lab/cubi/commit/885e51d91df57eeb3d13776240996727be9c1f3f))
+
 ## [1.2.0](https://github.com/pkr-lab/cubi/compare/v1.1.0...v1.2.0) (2026-10-22)
 
 ### Features
