@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/pkr-lab/cubi/compare/v1.3.0...v1.4.0) (2026-10-23)
+
+### Features
+
+* **gitlab-mirror:** add workflow for mirroring GitHub repository to GitLab ([2317d4f](https://github.com/pkr-lab/cubi/commit/2317d4f5c921ef4f4101549dd76f1b704f3c9fc2))
+
 ## [1.3.0](https://github.com/pkr-lab/cubi/compare/v1.2.0...v1.3.0) (2026-10-22)
 
 ### Features
