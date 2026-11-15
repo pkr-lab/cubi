@@ -1,3 +1,10 @@
+## [1.6.0](https://github.com/pkr-lab/cubi/compare/v1.5.0...v1.6.0) (2026-11-15)
+
+### Features
+
+* **cubi-desktop:** App-Icon und Installation als Desktop-App ([18c520c](https://github.com/pkr-lab/cubi/commit/18c520c4485981778eb1bec92b4356b49274ee97))
+* **cubi-desktop:** auf macOS und Linux lauffähig ([9991743](https://github.com/pkr-lab/cubi/commit/999174357552d0513f144f43df66b7befad569b3))
+
 ## [1.5.0](https://github.com/pkr-lab/cubi/compare/v1.4.0...v1.5.0) (2026-11-15)
 
 ### Features
