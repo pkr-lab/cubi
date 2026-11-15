@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/pkr-lab/cubi/compare/v1.6.0...v1.7.0) (2026-11-15)
+
+### Features
+
+* **cubi-desktop:** Paketinstallation und Shell-Umgebung beim Start ([e2a4a7f](https://github.com/pkr-lab/cubi/commit/e2a4a7fdbdecfa7f0245396a25c5778de773b785))
+
 ## [1.6.0](https://github.com/pkr-lab/cubi/compare/v1.5.0...v1.6.0) (2026-11-15)
 
 ### Features
