@@ -17,11 +17,80 @@ impl Output {
     }
 }
 
-pub fn require(tool: &str) -> Result<()> {
-    if which::which(tool).is_err() {
-        bail!("{tool} ist nicht installiert oder nicht im PATH");
+const MAC_APP_BINARIES: &[(&str, &str)] = &[(
+    "tailscale",
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+)];
+
+pub fn resolve(tool: &str) -> Option<std::path::PathBuf> {
+    if let Ok(p) = which::which(tool) {
+        return Some(p);
     }
-    Ok(())
+    if cfg!(target_os = "macos") {
+        return MAC_APP_BINARIES
+            .iter()
+            .find(|(n, _)| *n == tool)
+            .map(|(_, p)| std::path::PathBuf::from(p))
+            .filter(|p| p.is_file());
+    }
+    None
+}
+
+pub fn require(tool: &str) -> Result<std::path::PathBuf> {
+    resolve(tool).ok_or_else(|| anyhow!("{tool} ist nicht installiert oder nicht im PATH"))
+}
+
+pub fn merge_path(current: &str, extra: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for part in current.split(':').chain(extra.split(':')) {
+        if !part.is_empty() && !out.contains(&part) {
+            out.push(part);
+        }
+    }
+    out.join(":")
+}
+
+pub fn login_shell_path() -> Option<String> {
+    let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty())?;
+    let mut child = std::process::Command::new(shell)
+        .args(["-l", "-c", r#"printf %s "$PATH""#])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50))
+            }
+            _ => {
+                let _ = child.kill();
+                return None;
+            }
+        }
+    }
+    let mut s = String::new();
+    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut s).ok()?;
+    Some(s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+pub fn extended_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let mut extra = login_shell_path().unwrap_or_default();
+    let home = dirs::home_dir().unwrap_or_default();
+    for p in [
+        "/opt/homebrew/bin".to_string(),
+        "/usr/local/bin".into(),
+        home.join(".local/bin").display().to_string(),
+        home.join(".cargo/bin").display().to_string(),
+    ] {
+        extra.push(':');
+        extra.push_str(&p);
+    }
+    merge_path(&current, &extra)
 }
 
 pub async fn capture<S: AsRef<str>>(argv: &[S], timeout_secs: u64) -> Result<Output> {
@@ -38,8 +107,7 @@ pub async fn capture_in<S: AsRef<str>>(
     let (prog, rest) = args
         .split_first()
         .ok_or_else(|| anyhow!("leeres Kommando"))?;
-    require(prog)?;
-    let mut cmd = Command::new(prog);
+    let mut cmd = Command::new(require(prog)?);
     cmd.args(rest)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -172,6 +240,9 @@ pub fn terminal_prefix(configured: &[String]) -> Result<Vec<String>> {
         require(first)?;
         return Ok(configured.to_vec());
     }
+    if cfg!(target_os = "macos") {
+        return Ok(vec!["open".into(), "-a".into(), "Terminal".into()]);
+    }
     TERMINALS
         .iter()
         .find(|t| which::which(t[0]).is_ok())
@@ -182,6 +253,38 @@ pub fn terminal_prefix(configured: &[String]) -> Result<Vec<String>> {
 const HOLD_SCRIPT: &str =
     "\"$@\"; s=$?; printf '\\n[beendet mit Code %s] Enter schließt das Fenster ' \"$s\"; read -r _";
 
+pub fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+pub fn in_dir(dir: &std::path::Path, argv: Vec<String>) -> Vec<String> {
+    let mut v = vec![
+        "sh".into(),
+        "-c".into(),
+        r#"cd "$1" && shift && exec "$@""#.into(),
+        "cubi".into(),
+        dir.display().to_string(),
+    ];
+    v.extend(argv);
+    v
+}
+
+pub fn uses_script(prefix: &[String]) -> bool {
+    prefix.first().is_some_and(|p| p == "open")
+}
+
+pub fn command_script(argv: &[String], path_env: &str) -> String {
+    let cmd = argv
+        .iter()
+        .map(|a| sh_quote(a))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let path = sh_quote(path_env);
+    format!(
+        "#!/bin/sh\nrm -f \"$0\"\nPATH={path}\nexport PATH\n{cmd}\ns=$?\nprintf '\\n[beendet mit Code %s] Enter schließt das Fenster ' \"$s\"\nread -r _\n"
+    )
+}
+
 pub fn terminal_argv(prefix: &[String], argv: &[String]) -> Vec<String> {
     let mut full = prefix.to_vec();
     full.extend(["sh".into(), "-c".into(), HOLD_SCRIPT.into(), "cubi".into()]);
@@ -191,8 +294,28 @@ pub fn terminal_argv(prefix: &[String], argv: &[String]) -> Vec<String> {
 
 pub fn open_terminal(configured: &[String], argv: &[String], env: &[(&str, &str)]) -> Result<()> {
     let first = argv.first().ok_or_else(|| anyhow!("leeres Kommando"))?;
-    require(first)?;
-    let full = terminal_argv(&terminal_prefix(configured)?, argv);
+    let mut argv = argv.to_vec();
+    argv[0] = require(first)?.display().to_string();
+    let prefix = terminal_prefix(configured)?;
+    let full = if uses_script(&prefix) {
+        use std::io::Write;
+        let mut f = tempfile::Builder::new()
+            .prefix("cubi-")
+            .suffix(".command")
+            .tempfile()?;
+        f.write_all(command_script(&argv, &std::env::var("PATH").unwrap_or_default()).as_bytes())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(f.path(), std::fs::Permissions::from_mode(0o700))?;
+        }
+        let (_, path) = f.keep()?;
+        let mut v = prefix.clone();
+        v.push(path.display().to_string());
+        v
+    } else {
+        terminal_argv(&prefix, &argv)
+    };
     let mut cmd = std::process::Command::new(&full[0]);
     cmd.args(&full[1..])
         .stdin(Stdio::null())
@@ -246,6 +369,62 @@ mod tests {
         assert_eq!(&argv[..4], &["xterm", "-e", "sh", "-c"]);
         assert_eq!(argv[5], "cubi");
         assert_eq!(argv.last().unwrap(), "host; rm -rf /");
+    }
+
+    #[test]
+    fn quoting_and_paths() {
+        assert_eq!(sh_quote("a'b"), r"'a'\''b'");
+        let s = command_script(&["ssh".into()], "/bin:/usr/bin");
+        assert!(s.starts_with("#!/bin/sh\nrm -f \"$0\"\nPATH='/bin:/usr/bin'\n"));
+        assert!(uses_script(&[
+            "open".into(),
+            "-a".into(),
+            "Terminal".into()
+        ]));
+        assert!(!uses_script(&["xterm".into()]));
+        assert_eq!(merge_path("/a:/b", "/b:/c::/a"), "/a:/b:/c");
+    }
+
+    #[test]
+    fn command_script_runs_quoted_arguments() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let argv: Vec<String> = vec![
+            "sh".into(),
+            "-c".into(),
+            r#"printf %s "$1" > "$2""#.into(),
+            "x".into(),
+            "a'b; c $(id)".into(),
+            out.display().to_string(),
+        ];
+        let script =
+            command_script(&argv, &std::env::var("PATH").unwrap()).replace("read -r _\n", "");
+        let path = dir.path().join("t.command");
+        std::fs::write(&path, script).unwrap();
+        assert!(
+            std::process::Command::new("sh")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "a'b; c $(id)");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn in_dir_changes_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let argv = in_dir(dir.path(), vec!["pwd".into()]);
+        let out = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .output()
+            .unwrap();
+        let got = std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim().to_string());
+        assert_eq!(
+            got.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap()
+        );
     }
 
     #[tokio::test]

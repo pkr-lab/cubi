@@ -14,6 +14,9 @@ struct DesktopConfig {
 }
 
 fn main() -> eframe::Result {
+    let path = cubi_desktop::shell::extended_path();
+    // SAFETY: Am Programmstart läuft noch kein weiterer Thread.
+    unsafe { std::env::set_var("PATH", path) };
     let mut config_dir: Option<PathBuf> = None;
     let mut repo: Option<PathBuf> = None;
     let mut start: Option<String> = None;
