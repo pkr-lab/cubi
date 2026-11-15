@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # cubi-desktop bauen und als Desktop-App installieren (Linux und macOS).
 #
-#   ./install.sh               bauen, installieren, Verknüpfung auf dem Schreibtisch
+#   ./install.sh               fehlende Pakete installieren (mit Rückfrage), bauen,
+#                              installieren, Verknüpfung auf dem Schreibtisch
+#   ./install.sh --yes         Pakete ohne Rückfrage installieren
+#   ./install.sh --no-deps     Pakete nicht prüfen
 #   ./install.sh --no-desktop  ohne Verknüpfung auf dem Schreibtisch
 #   ./install.sh --uninstall   App, Starter und Icons entfernen (Konfiguration bleibt)
 set -euo pipefail
@@ -11,13 +14,16 @@ cfg="${XDG_CONFIG_HOME:-$HOME/.config}/cubi-desktop"
 os="${CUBI_INSTALL_OS:-$(uname -s)}"
 desktop_link=1
 uninstall=0
+deps=ask
 
 for arg in "$@"; do
   case "$arg" in
     --no-desktop) desktop_link=0 ;;
     --uninstall) uninstall=1 ;;
+    --yes | -y) deps=yes ;;
+    --no-deps) deps=no ;;
     -h | --help)
-      sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -72,6 +78,14 @@ if [ "$uninstall" = 1 ]; then
   esac
   echo "cubi-desktop entfernt. Die Konfiguration in $cfg bleibt erhalten."
   exit 0
+fi
+
+if [ "$deps" != no ]; then
+  if [ "$deps" = yes ]; then "$here/deps.sh" --yes; else "$here/deps.sh"; fi
+fi
+if ! command -v cargo >/dev/null 2>&1 && [ -f "$HOME/.cargo/env" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.cargo/env"
 fi
 
 if ! command -v cargo >/dev/null 2>&1; then

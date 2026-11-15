@@ -13,12 +13,25 @@ const APP_ICON: &[u8] = include_bytes!("../assets/icon-256.png");
 struct DesktopConfig {
     #[serde(default)]
     terminal: Vec<String>,
+    #[serde(default)]
+    env: std::collections::BTreeMap<String, String>,
+}
+
+fn prepare_env(desktop: &DesktopConfig) {
+    let shell = cubi_desktop::shell::shell_env();
+    let home = dirs::home_dir().unwrap_or_default();
+    let mut updates = cubi_desktop::shell::env_updates(&shell, |k| std::env::var(k).ok(), &home);
+    for (k, v) in &desktop.env {
+        let v = precheck::config::expand_home(v).display().to_string();
+        updates.push((k.clone(), v));
+    }
+    for (k, v) in updates {
+        // SAFETY: Läuft vor dem Start der Runtime und des Fensters, noch ohne weitere Threads.
+        unsafe { std::env::set_var(k, v) };
+    }
 }
 
 fn main() -> eframe::Result {
-    let path = cubi_desktop::shell::extended_path();
-    // SAFETY: Am Programmstart läuft noch kein weiterer Thread.
-    unsafe { std::env::set_var("PATH", path) };
     let mut config_dir: Option<PathBuf> = None;
     let mut repo: Option<PathBuf> = None;
     let mut start: Option<String> = None;
@@ -41,6 +54,11 @@ fn main() -> eframe::Result {
         }
     }
     let dir = config_dir.unwrap_or_else(precheck::config::default_dir);
+    let desktop: DesktopConfig = std::fs::read_to_string(dir.join("desktop.toml"))
+        .ok()
+        .and_then(|t| toml::from_str(&t).ok())
+        .unwrap_or_default();
+    prepare_env(&desktop);
     let pc_cfg =
         precheck::config::Config::load(&dir.join("precheck")).map_err(|e| format!("{e:#}"));
     if cli {
@@ -57,10 +75,6 @@ fn main() -> eframe::Result {
             }
         });
     }
-    let desktop: DesktopConfig = std::fs::read_to_string(dir.join("desktop.toml"))
-        .ok()
-        .and_then(|t| toml::from_str(&t).ok())
-        .unwrap_or_default();
     let repo = repo.or_else(|| {
         let cwd = std::env::current_dir().ok()?;
         cwd.join(".git").exists().then_some(cwd)
