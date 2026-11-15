@@ -1,3 +1,10 @@
+## [1.5.0](https://github.com/pkr-lab/cubi/compare/v1.4.0...v1.5.0) (2026-11-15)
+
+### Features
+
+* **cubi-desktop:** alle cubi-Bereiche in der Desktop-Oberfläche ([4560dee](https://github.com/pkr-lab/cubi/commit/4560dee797084d3adcd784e94d208ce003453d8e))
+* **cubi-precheck:** Desktop-App für lokale CI-Checks vor dem Push ([34b8a60](https://github.com/pkr-lab/cubi/commit/34b8a602edfa6fdfd7e44d15242d43e74b9bb6c4))
+
 ## [1.4.0](https://github.com/pkr-lab/cubi/compare/v1.3.0...v1.4.0) (2026-10-23)
 
 ### Features
