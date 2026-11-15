@@ -23,14 +23,18 @@ cd cubi-desktop
 cargo build --release
 ```
 
+Rust und alle Werkzeuge, die die App aufruft, installiert `./deps.sh` bzw. `./install.sh` (siehe unten). Unter Linux braucht der Build nur einen C-Linker (`build-essential`). Die Grafikbibliotheken lädt die App zur Laufzeit.
+
 **macOS:**
-- Rust installieren: `brew install rustup && rustup-init`. Ohne Homebrew geht es mit dem Installer von rustup.rs.
-- Die Werkzeuge, die cubi aufruft, kommen ebenfalls per Homebrew: `brew install kubectl argocd helm gh act`.
 - Tailscale findet die App auch ohne CLI im `PATH`, nämlich in `/Applications/Tailscale.app`.
 - Interaktive Befehle öffnen Terminal.app. Für iTerm in `desktop.toml` `terminal = ["open", "-a", "iTerm"]` setzen.
-- Die App übernimmt beim Start den `PATH` der Login-Shell. So findet sie Homebrew-Tools auch dann, wenn sie nicht aus einem Terminal gestartet wurde.
 
-**Linux:** Für den Build braucht es die Pakete `libxkbcommon-dev`, `libwayland-dev`, `libxcb-render0-dev`, `libxcb-shape0-dev`, `libxcb-xfixes0-dev` und `libgl1-mesa-dev`.
+**Umgebung:** Aus Startmenü, Dock oder Launchpad gestartet, übernimmt die App beim Start Variablen aus der interaktiven Login-Shell, also aus `~/.bashrc`, `~/.zshrc` oder `~/.profile`. Übernommen werden:
+- `PATH`, zusammengeführt mit Homebrew und `~/.local/bin`
+- `KUBECONFIG`, `SSH_AUTH_SOCK`, `DOCKER_HOST`, `CUBI_CONFIG`
+- `ARGOCD_*`, `GH_*`, `GITHUB_*`, `HELM_*`, `KUBE*`, `TAILSCALE_*`
+
+Schon gesetzte Werte haben Vorrang. Feste Werte gehen in `desktop.toml` unter `[env]`, z. B. `KUBECONFIG = "~/.kube/homeserver.yaml"`.
 
 Die CI (`.github/workflows/cubi-desktop.yml`) baut und testet auf `ubuntu-latest` und `macos-latest`.
 
@@ -42,13 +46,22 @@ Entwicklung: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo f
 ./install.sh
 ```
 
-Das Skript baut die App im Release-Modus und kopiert die Konfiguration nach `~/.config/cubi-desktop/`. Vorhandene Dateien dort bleiben unverändert. Danach installiert es die App mit Icon:
+Das Skript arbeitet in drei Schritten:
+
+1. **Pakete:** Es prüft mit `deps.sh` alle benötigten Programme, zeigt die fehlenden an und installiert sie nach Rückfrage.
+   - Linux: per `apt`. `kubectl`, `helm`, `argocd`, `act` und gegebenenfalls `gitleaks` kommen als offizielle Release-Binaries nach `~/.local/bin`, jeweils mit SHA-256-Prüfung. Tailscale kommt über den offiziellen Installer, Rust über rustup.
+   - macOS: per Homebrew.
+2. **Konfiguration:** Es baut die App im Release-Modus und kopiert die Konfiguration nach `~/.config/cubi-desktop/`. Vorhandene Dateien dort bleiben unverändert.
+3. **App:** Es installiert die App mit Icon:
 
 | System | Ergebnis |
 |---|---|
 | Linux | `~/.local/bin/cubi-desktop`, Eintrag „cubi“ im Anwendungsmenü (`~/.local/share/applications/cubi-desktop.desktop`), Icons in `~/.local/share/icons/hicolor`, Symbol auf dem Schreibtisch |
 | macOS | `~/Applications/cubi.app` mit Icon, startbar über Launchpad und Spotlight, Verknüpfung auf dem Schreibtisch. Fürs Dock: App starten, Rechtsklick aufs Dock-Symbol, „Im Dock behalten“. |
 
+- `./install.sh --yes` installiert fehlende Pakete ohne Rückfrage, `--no-deps` überspringt die Paketprüfung.
+- `./deps.sh --check` zeigt nur an, was fehlt. `./deps.sh` installiert nur die Pakete.
+- CodeQL für die optionalen CodeQL-Checks wird nicht automatisch installiert.
 - `./install.sh --no-desktop` installiert ohne Symbol auf dem Schreibtisch.
 - `./install.sh --uninstall` entfernt App, Starter und Icons. Die Konfiguration bleibt erhalten.
 - Nach einem `git pull` installiert ein erneutes `./install.sh` die neue Version.
