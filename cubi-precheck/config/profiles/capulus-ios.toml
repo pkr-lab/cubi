@@ -1,0 +1,62 @@
+# Abgeleitet aus capulus-ios: .github/workflows/ci.yml, commitlint.yml,
+# codeql.yml (Ereignis pull_request auf main).
+name = "capulus-ios"
+remote = "pkr-lab/capulus-ios"
+base_branch = "main"
+protected_branches = ["main"]
+
+[[checks]]
+id = "build"
+name = "xcodegen + xcodebuild"
+source = ".github/workflows/ci.yml#build"
+needs = ["xcodegen", "xcodebuild"]
+os = ["macos"]
+env = { HOMEBREW_NO_AUTO_UPDATE = "1" }
+steps = [
+  ["xcodegen", "generate"],
+  ["xcodebuild", "build", "-project", "HomeserverDashboard.xcodeproj", "-target", "HomeserverDashboard", "CODE_SIGNING_ALLOWED=NO"],
+]
+
+[[checks]]
+id = "ca-checksum"
+name = "Root-CA entspricht capulus-core"
+source = ".github/workflows/ci.yml#ca-checksum"
+needs = ["curl", "cmp"]
+steps = [
+  ["curl", "-fsSL", "https://raw.githubusercontent.com/pkr-lab/capulus-core/main/pki/homeserver-root-ca.pem", "-o", "{tmp}/core-ca.pem"],
+  ["cmp", "{tmp}/core-ca.pem", "Resources/homeserver-root-ca.pem"],
+]
+
+[[checks]]
+id = "secret-scan"
+name = "gitleaks"
+source = ".github/workflows/ci.yml#secret-scan"
+needs = ["gitleaks"]
+steps = [["gitleaks", "git", "--no-banner", "--redact", "--verbose", "--log-opts=--no-merges --first-parent {base}..{head}", "{repo}"]]
+
+[[checks]]
+id = "commitlint"
+name = "commitlint"
+source = ".github/workflows/commitlint.yml (pkr-lab/.github v1.2.0)"
+skip_if_no_commits = true
+needs = ["npx", "git"]
+steps = [["npx", "--yes", "-p", "@commitlint/cli", "commitlint", "--config", "{config_dir}/shared/commitlint.config.cjs", "--from", "{base}", "--to", "{head}", "--verbose"]]
+
+[[checks]]
+id = "codeql-actions"
+name = "CodeQL (actions)"
+source = ".github/workflows/codeql.yml#analyze"
+paths_ignore = ["**/*.md"]
+required = false
+needs = ["codeql"]
+steps = [["codeql", "database", "create", "{tmp}/db", "--language=actions", "--build-mode=none", "--source-root={repo}"], ["codeql", "database", "analyze", "{tmp}/db", "--format=csv", "--output=/dev/stdout"]]
+
+[[checks]]
+id = "codeql-swift"
+name = "CodeQL (swift)"
+source = ".github/workflows/codeql.yml#analyze"
+paths_ignore = ["**/*.md"]
+required = false
+needs = ["codeql", "xcodegen"]
+os = ["macos"]
+steps = [["xcodegen", "generate"], ["codeql", "database", "create", "{tmp}/db", "--language=swift", "--build-mode=autobuild", "--source-root={repo}"], ["codeql", "database", "analyze", "{tmp}/db", "--format=csv", "--output=/dev/stdout"]]
