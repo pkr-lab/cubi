@@ -1,0 +1,17 @@
+[package]
+name = "cubi-precheck"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+dirs = "7.0.0"
+eframe = "0.37.0"
+globset = "0.4.21"
+nix = { version = "0.32.0", features = ["signal", "process"] }
+serde = { version = "1.0.229", features = ["derive"] }
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "process", "io-util", "sync", "time", "macros", "signal"] }
+tokio-util = "0.7.20"
+toml = "1.2.1"
+which = "8.0.6"

@@ -1,0 +1,41 @@
+# Abgeleitet aus capulus-ansible: .github/workflows/ci.yml, commitlint.yml
+# (Ereignis pull_request auf main).
+name = "capulus-ansible"
+remote = "pkr-lab/capulus-ansible"
+base_branch = "main"
+protected_branches = ["main"]
+
+[[checks]]
+id = "lint"
+name = "make lint (yamllint, ansible-lint)"
+source = ".github/workflows/ci.yml#lint"
+needs = ["make", "yamllint", "ansible-lint", "ansible-galaxy"]
+steps = [
+  ["ansible-galaxy", "collection", "install", "-r", "requirements.yml"],
+  ["make", "lint"],
+]
+
+[[checks]]
+id = "ca-checksum"
+name = "Root-CA entspricht capulus-core"
+source = ".github/workflows/ci.yml#ca-checksum"
+needs = ["curl", "cmp"]
+steps = [
+  ["curl", "-fsSL", "https://raw.githubusercontent.com/pkr-lab/capulus-core/main/pki/homeserver-root-ca.pem", "-o", "{tmp}/core-ca.pem"],
+  ["cmp", "{tmp}/core-ca.pem", "files/homeserver-root-ca.pem"],
+]
+
+[[checks]]
+id = "secret-scan"
+name = "gitleaks"
+source = ".github/workflows/ci.yml#secret-scan"
+needs = ["gitleaks"]
+steps = [["gitleaks", "git", "--no-banner", "--redact", "--verbose", "--log-opts=--no-merges --first-parent {base}..{head}", "{repo}"]]
+
+[[checks]]
+id = "commitlint"
+name = "commitlint"
+source = ".github/workflows/commitlint.yml (pkr-lab/.github v1.2.0)"
+skip_if_no_commits = true
+needs = ["npx", "git"]
+steps = [["npx", "--yes", "-p", "@commitlint/cli", "commitlint", "--config", "{config_dir}/shared/commitlint.config.cjs", "--from", "{base}", "--to", "{head}", "--verbose"]]

@@ -1,0 +1,10 @@
+# Wie viele Checks gleichzeitig laufen.
+parallel = 2
+
+# Repos, die in der Auswahl erscheinen. Das Profil wird über den
+# GitHub-Remote (owner/repo) zugeordnet.
+repos = [
+  "~/git/github/capulus/capulus-core",
+  "~/git/github/capulus/capulus-ansible",
+  "~/git/github/capulus/capulus-ios",
+]
