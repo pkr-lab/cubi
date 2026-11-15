@@ -10,8 +10,18 @@ pub struct DesktopApp {
     cx: Cx,
     views: Vec<Box<dyn View>>,
     active: usize,
+    logo: Option<egui::TextureHandle>,
     #[cfg(feature = "screenshot")]
     shot: Option<Shot>,
+}
+
+fn load_logo(ctx: &egui::Context) -> Option<egui::TextureHandle> {
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-128.png")).ok()?;
+    let img = egui::ColorImage::from_rgba_unmultiplied(
+        [icon.width as usize, icon.height as usize],
+        &icon.rgba,
+    );
+    Some(ctx.load_texture("cubi-logo", img, egui::TextureOptions::LINEAR))
 }
 
 #[cfg(feature = "screenshot")]
@@ -48,6 +58,7 @@ impl DesktopApp {
             views[active].open(&name);
         }
         Self {
+            logo: load_logo(&cc.egui_ctx),
             _rt: rt,
             cx,
             views,
@@ -95,18 +106,25 @@ impl eframe::App for DesktopApp {
 impl DesktopApp {
     fn sidebar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            Frame::new()
-                .fill(theme::ACCENT)
-                .corner_radius(CornerRadius::same(8))
-                .inner_margin(Margin::symmetric(8, 3))
-                .show(ui, |ui| {
-                    ui.label(
-                        RichText::new("c")
-                            .size(20.0)
-                            .strong()
-                            .color(egui::Color32::WHITE),
-                    );
-                });
+            match &self.logo {
+                Some(tex) => {
+                    ui.add(egui::Image::new((tex.id(), egui::vec2(38.0, 38.0))));
+                }
+                None => {
+                    Frame::new()
+                        .fill(theme::ACCENT)
+                        .corner_radius(CornerRadius::same(8))
+                        .inner_margin(Margin::symmetric(8, 3))
+                        .show(ui, |ui| {
+                            ui.label(
+                                RichText::new("c")
+                                    .size(20.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE),
+                            );
+                        });
+                }
+            }
             ui.vertical(|ui| {
                 ui.label(
                     RichText::new("cubi")

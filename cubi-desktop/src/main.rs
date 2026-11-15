@@ -7,6 +7,8 @@ const USAGE: &str =
   --bereich  Startbereich, z. B. argocd, kubernetes, github, tokens, login, precheck
   --cli      Pre-Push-Checks ohne Oberfläche ausführen (Exit-Code 0 = alle Pflicht-Checks grün)";
 
+const APP_ICON: &[u8] = include_bytes!("../assets/icon-256.png");
+
 #[derive(serde::Deserialize, Default)]
 struct DesktopConfig {
     #[serde(default)]
@@ -14,6 +16,9 @@ struct DesktopConfig {
 }
 
 fn main() -> eframe::Result {
+    let path = cubi_desktop::shell::extended_path();
+    // SAFETY: Am Programmstart läuft noch kein weiterer Thread.
+    unsafe { std::env::set_var("PATH", path) };
     let mut config_dir: Option<PathBuf> = None;
     let mut repo: Option<PathBuf> = None;
     let mut start: Option<String> = None;
@@ -69,12 +74,16 @@ fn main() -> eframe::Result {
         .expect("tokio-Runtime");
     let cubi = CubiConfig::load().map_err(|e| format!("{e:#}"));
     let precheck = Precheck::new(pc_cfg, repo);
+    let mut viewport = eframe::egui::ViewportBuilder::default()
+        .with_title("cubi")
+        .with_app_id("cubi-desktop")
+        .with_inner_size([1440.0, 900.0])
+        .with_min_inner_size([980.0, 620.0]);
+    if let Ok(icon) = eframe::icon_data::from_png_bytes(APP_ICON) {
+        viewport = viewport.with_icon(std::sync::Arc::new(icon));
+    }
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("cubi")
-            .with_app_id("cubi-desktop")
-            .with_inner_size([1440.0, 900.0])
-            .with_min_inner_size([980.0, 620.0]),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(

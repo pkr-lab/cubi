@@ -16,27 +16,55 @@ Interaktive Befehle (SSH, Pod-Shell, Logs folgen, Logins, Rotationsskripte) öff
 
 ## Build
 
-Voraussetzung: Rust stable (`rustup`).
+Läuft unter Linux und macOS (Apple Silicon und Intel). Voraussetzung ist Rust stable (`rustup`).
 
 ```bash
 cd cubi-desktop
 cargo build --release
 ```
 
+**macOS:**
+- Rust installieren: `brew install rustup && rustup-init`. Ohne Homebrew geht es mit dem Installer von rustup.rs.
+- Die Werkzeuge, die cubi aufruft, kommen ebenfalls per Homebrew: `brew install kubectl argocd helm gh act`.
+- Tailscale findet die App auch ohne CLI im `PATH`, nämlich in `/Applications/Tailscale.app`.
+- Interaktive Befehle öffnen Terminal.app. Für iTerm in `desktop.toml` `terminal = ["open", "-a", "iTerm"]` setzen.
+- Die App übernimmt beim Start den `PATH` der Login-Shell. So findet sie Homebrew-Tools auch dann, wenn sie nicht aus einem Terminal gestartet wurde.
+
+**Linux:** Für den Build braucht es die Pakete `libxkbcommon-dev`, `libwayland-dev`, `libxcb-render0-dev`, `libxcb-shape0-dev`, `libxcb-xfixes0-dev` und `libgl1-mesa-dev`.
+
+Die CI (`.github/workflows/cubi-desktop.yml`) baut und testet auf `ubuntu-latest` und `macos-latest`.
+
 Entwicklung: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`.
 
-## Start
+## Installation als Desktop-App
 
 ```bash
-mkdir -p ~/.config/cubi-desktop
-cp -r config/* ~/.config/cubi-desktop/
-./target/release/cubi-desktop
+./install.sh
+```
+
+Das Skript baut die App im Release-Modus und kopiert die Konfiguration nach `~/.config/cubi-desktop/`. Vorhandene Dateien dort bleiben unverändert. Danach installiert es die App mit Icon:
+
+| System | Ergebnis |
+|---|---|
+| Linux | `~/.local/bin/cubi-desktop`, Eintrag „cubi“ im Anwendungsmenü (`~/.local/share/applications/cubi-desktop.desktop`), Icons in `~/.local/share/icons/hicolor`, Symbol auf dem Schreibtisch |
+| macOS | `~/Applications/cubi.app` mit Icon, startbar über Launchpad und Spotlight, Verknüpfung auf dem Schreibtisch. Fürs Dock: App starten, Rechtsklick aufs Dock-Symbol, „Im Dock behalten“. |
+
+- `./install.sh --no-desktop` installiert ohne Symbol auf dem Schreibtisch.
+- `./install.sh --uninstall` entfernt App, Starter und Icons. Die Konfiguration bleibt erhalten.
+- Nach einem `git pull` installiert ein erneutes `./install.sh` die neue Version.
+
+Unter GNOME muss das Schreibtisch-Symbol beim ersten Start eventuell per Rechtsklick und „Start erlauben“ freigegeben werden.
+
+## Start aus dem Terminal
+
+```bash
+cubi-desktop                    # bzw. ./target/release/cubi-desktop
 ```
 
 - `--bereich <name>` öffnet einen Bereich direkt. Die Namen und Aliase sind dieselben wie bei cubi, z. B. `argocd`, `sync`, `ft`, `scale`, `k8s`, `gh`, `tokens`, `login`, `precheck`.
 - Ein Repo-Pfad als Argument, oder der Start in einem Git-Repo, öffnet die Pre-Push-Checks für dieses Repo.
 - `--cli` führt die Pre-Push-Checks ohne Oberfläche aus. Exit-Code 0 heißt: alle Pflicht-Checks sind grün.
-- `--config <ordner>` nimmt einen anderen Konfigurationsordner, alternativ `CUBI_DESKTOP_CONFIG`.
+- `--config <ordner>` nimmt einen anderen Konfigurationsordner, alternativ `CUBI_DESKTOP_CONFIG`. Standard ist auf Linux und macOS `~/.config/cubi-desktop/`, bzw. `$XDG_CONFIG_HOME/cubi-desktop/`, wenn die Variable gesetzt ist.
 
 Tokens kommen aus `gh auth`, der kubeconfig und der ArgoCD-Config. Die App speichert keine Secrets.
 
@@ -44,7 +72,7 @@ Tokens kommen aus `gh auth`, der kubeconfig und der ArgoCD-Config. Die App speic
 
 ```
 ~/.config/cubi-desktop/
-├── desktop.toml                          # terminal = ["gnome-terminal", "--"] (leer = automatisch)
+├── desktop.toml                          # terminal = ["gnome-terminal", "--"] oder ["open", "-a", "iTerm"] (leer = automatisch)
 └── precheck/
     ├── config.toml                       # parallel, repos
     ├── profiles/<repo>.toml              # ein Profil pro Repo
