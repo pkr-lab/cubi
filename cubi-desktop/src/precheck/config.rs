@@ -138,12 +138,12 @@ impl Config {
 }
 
 pub fn default_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("CUBI_PRECHECK_CONFIG") {
+    if let Some(d) = std::env::var_os("CUBI_DESKTOP_CONFIG") {
         return PathBuf::from(d);
     }
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("cubi-precheck")
+        .join("cubi-desktop")
 }
 
 pub fn expand_home(p: &str) -> PathBuf {
@@ -339,7 +339,9 @@ steps = [["git", "log", "{base}..{head}"]]
 
     #[test]
     fn bundled_profiles_are_valid() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("config");
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("config")
+            .join("precheck");
         let cfg = Config::load(&dir).unwrap();
         for name in ["capulus-core", "capulus-ansible", "capulus-ios"] {
             assert!(cfg.profiles.iter().any(|p| p.name == name), "{name} fehlt");

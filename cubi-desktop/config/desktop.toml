@@ -1,0 +1,5 @@
+# Terminal für interaktive Befehle (SSH, Pod-Shell, Logins, Logs folgen).
+# Leer lassen = automatisch suchen (x-terminal-emulator, gnome-terminal,
+# konsole, xfce4-terminal, kitty, alacritty, xterm). Das Kommando wird als
+# Argumentliste angehängt, z. B. ["gnome-terminal", "--"] oder ["xterm", "-e"].
+terminal = []

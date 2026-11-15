@@ -4,9 +4,9 @@ use anyhow::{Context, Result};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::config::{Check, Config};
-use crate::git;
-use crate::runner::{self, Event, Gate, Status};
+use crate::precheck::config::{Check, Config};
+use crate::precheck::git;
+use crate::precheck::runner::{self, Event, Gate, Status};
 
 pub fn run(cfg: &Config, repo: &Path) -> Result<bool> {
     let rt = tokio::runtime::Runtime::new()?;
