@@ -1,0 +1,150 @@
+# Abgeleitet aus capulus-core: .github/workflows/ci.yml, commitlint.yml,
+# codeql.yml, build-images.yml (Ereignis pull_request auf main).
+name = "capulus-core"
+remote = "pkr-lab/capulus-core"
+base_branch = "main"
+protected_branches = ["main"]
+
+[[checks]]
+id = "lint"
+name = "make lint (yamllint, helm lint)"
+source = ".github/workflows/ci.yml#lint"
+needs = ["make", "yamllint", "helm"]
+steps = [["make", "lint"]]
+
+[[checks]]
+id = "manifest-validate"
+name = "helm template | kubeconform (act)"
+source = ".github/workflows/ci.yml#manifest-validate"
+needs = ["act"]
+needs_docker = true
+steps = [["act", "pull_request", "-W", ".github/workflows/ci.yml", "-j", "manifest-validate", "-P", "ubuntu-latest=catthehacker/ubuntu:act-latest", "--pull=false", "--rm"]]
+
+[[checks]]
+id = "go-check"
+name = "go build, vet, test, tidy (act)"
+source = ".github/workflows/ci.yml#go-check"
+needs = ["act"]
+needs_docker = true
+steps = [["act", "pull_request", "-W", ".github/workflows/ci.yml", "-j", "go-check", "-P", "ubuntu-latest=catthehacker/ubuntu:act-latest", "--pull=false", "--rm"]]
+
+[[checks]]
+id = "isc-news-bot"
+name = "isc-news-bot: typecheck, unit, mock (act)"
+source = ".github/workflows/ci.yml#isc-news-bot"
+needs = ["act"]
+needs_docker = true
+steps = [["act", "pull_request", "-W", ".github/workflows/ci.yml", "-j", "isc-news-bot", "-P", "ubuntu-latest=catthehacker/ubuntu:act-latest", "--pull=false", "--rm"]]
+
+[[checks]]
+id = "token-register"
+name = "token register"
+source = ".github/workflows/ci.yml#token-register"
+needs = ["python3"]
+probes = [{ cmd = ["python3", "-c", "import yaml"], hint = "PyYAML fehlt (pip install pyyaml)" }]
+steps = [["python3", "scripts/check-token-register.py"]]
+
+[[checks]]
+id = "secret-scan"
+name = "gitleaks"
+source = ".github/workflows/ci.yml#secret-scan"
+needs = ["gitleaks"]
+steps = [["gitleaks", "git", "--no-banner", "--redact", "--verbose", "--log-opts=--no-merges --first-parent {base}..{head}", "{repo}"]]
+
+[[checks]]
+id = "commitlint"
+name = "commitlint"
+source = ".github/workflows/commitlint.yml (pkr-lab/.github v1.2.0)"
+skip_if_no_commits = true
+needs = ["npx", "git"]
+steps = [["npx", "--yes", "-p", "@commitlint/cli", "commitlint", "--config", "{config_dir}/shared/commitlint.config.cjs", "--from", "{base}", "--to", "{head}", "--verbose"]]
+
+[[checks]]
+id = "build-carplay-api"
+name = "build carplay-api (docker build, ohne Push)"
+source = ".github/workflows/build-images.yml#build"
+needs = ["docker"]
+needs_docker = true
+paths = ["argocd/apps/tech/carplay-api/**"]
+steps = [["docker", "build", "--file", "argocd/apps/tech/carplay-api/Dockerfile", "--tag", "cubi-precheck/carplay-api:local", "argocd/apps/tech/carplay-api"]]
+
+[[checks]]
+id = "build-ticket-gate"
+name = "build ticket-gate (docker build, ohne Push)"
+source = ".github/workflows/build-images.yml#build"
+needs = ["docker"]
+needs_docker = true
+paths = ["argocd/apps/tech/ticket-gate/**"]
+steps = [["docker", "build", "--file", "argocd/apps/tech/ticket-gate/Dockerfile", "--tag", "cubi-precheck/ticket-gate:local", "argocd/apps/tech/ticket-gate"]]
+
+[[checks]]
+id = "build-n8n"
+name = "build n8n (docker build, ohne Push)"
+source = ".github/workflows/build-images.yml#build"
+needs = ["docker"]
+needs_docker = true
+paths = ["argocd/apps/tech/n8n/image/**"]
+steps = [["docker", "build", "--file", "argocd/apps/tech/n8n/image/Dockerfile", "--tag", "cubi-precheck/n8n:local", "argocd/apps/tech/n8n/image"]]
+
+[[checks]]
+id = "build-mdm-scep"
+name = "build mdm-scep (docker build, ohne Push)"
+source = ".github/workflows/build-images.yml#build"
+needs = ["docker"]
+needs_docker = true
+paths = ["argocd/apps/tech/mdm/image/scep/**"]
+steps = [["docker", "build", "--file", "argocd/apps/tech/mdm/image/scep/Dockerfile", "--tag", "cubi-precheck/mdm-scep:local", "argocd/apps/tech/mdm/image/scep"]]
+
+[[checks]]
+id = "build-isc-news-bot"
+name = "build isc-news-bot (docker build, ohne Push)"
+source = ".github/workflows/build-images.yml#build"
+needs = ["docker"]
+needs_docker = true
+paths = ["argocd/apps/tech/isc-news-bot/**"]
+steps = [["docker", "build", "--file", "argocd/apps/tech/isc-news-bot/Dockerfile", "--tag", "cubi-precheck/isc-news-bot:local", "argocd/apps/tech/isc-news-bot"]]
+
+[[checks]]
+id = "build-alert-caller"
+name = "build alert-caller (docker build, ohne Push)"
+source = ".github/workflows/build-images.yml#build"
+needs = ["docker"]
+needs_docker = true
+paths = ["argocd/apps/tech/alert-caller/**"]
+steps = [["docker", "build", "--file", "argocd/apps/tech/alert-caller/Dockerfile", "--tag", "cubi-precheck/alert-caller:local", "argocd/apps/tech/alert-caller"]]
+
+[[checks]]
+id = "codeql-actions"
+name = "CodeQL (actions)"
+source = ".github/workflows/codeql.yml#analyze"
+paths_ignore = ["**/*.md"]
+required = false
+needs = ["codeql"]
+steps = [["codeql", "database", "create", "{tmp}/db", "--language=actions", "--build-mode=none", "--source-root={repo}"], ["codeql", "database", "analyze", "{tmp}/db", "--format=csv", "--output=/dev/stdout"]]
+
+[[checks]]
+id = "codeql-go"
+name = "CodeQL (go)"
+source = ".github/workflows/codeql.yml#analyze"
+paths_ignore = ["**/*.md"]
+required = false
+needs = ["codeql"]
+steps = [["codeql", "database", "create", "{tmp}/db", "--language=go", "--build-mode=autobuild", "--source-root={repo}"], ["codeql", "database", "analyze", "{tmp}/db", "--format=csv", "--output=/dev/stdout"]]
+
+[[checks]]
+id = "codeql-javascript-typescript"
+name = "CodeQL (javascript-typescript)"
+source = ".github/workflows/codeql.yml#analyze"
+paths_ignore = ["**/*.md"]
+required = false
+needs = ["codeql"]
+steps = [["codeql", "database", "create", "{tmp}/db", "--language=javascript-typescript", "--build-mode=none", "--source-root={repo}"], ["codeql", "database", "analyze", "{tmp}/db", "--format=csv", "--output=/dev/stdout"]]
+
+[[checks]]
+id = "codeql-python"
+name = "CodeQL (python)"
+source = ".github/workflows/codeql.yml#analyze"
+paths_ignore = ["**/*.md"]
+required = false
+needs = ["codeql"]
+steps = [["codeql", "database", "create", "{tmp}/db", "--language=python", "--build-mode=none", "--source-root={repo}"], ["codeql", "database", "analyze", "{tmp}/db", "--format=csv", "--output=/dev/stdout"]]
