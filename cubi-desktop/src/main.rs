@@ -1,0 +1,94 @@
+use std::path::PathBuf;
+
+use cubi_desktop::{app::DesktopApp, cubi_config::CubiConfig, precheck, views::precheck::Precheck};
+
+const USAGE: &str =
+    "Aufruf: cubi-desktop [--config <ordner>] [--bereich <name>] [--cli] [<repo-pfad>]
+  --bereich  Startbereich, z. B. argocd, kubernetes, github, tokens, login, precheck
+  --cli      Pre-Push-Checks ohne Oberfläche ausführen (Exit-Code 0 = alle Pflicht-Checks grün)";
+
+#[derive(serde::Deserialize, Default)]
+struct DesktopConfig {
+    #[serde(default)]
+    terminal: Vec<String>,
+}
+
+fn main() -> eframe::Result {
+    let mut config_dir: Option<PathBuf> = None;
+    let mut repo: Option<PathBuf> = None;
+    let mut start: Option<String> = None;
+    let mut cli = false;
+    let mut args = std::env::args_os().skip(1);
+    while let Some(a) = args.next() {
+        match a.to_str() {
+            Some("--config") => config_dir = args.next().map(PathBuf::from),
+            Some("--bereich") => start = args.next().map(|s| s.to_string_lossy().into_owned()),
+            Some("--cli") => cli = true,
+            Some("-h" | "--help") => {
+                println!("{USAGE}");
+                return Ok(());
+            }
+            _ if repo.is_none() => repo = Some(PathBuf::from(a)),
+            _ => {
+                eprintln!("{USAGE}");
+                std::process::exit(2);
+            }
+        }
+    }
+    let dir = config_dir.unwrap_or_else(precheck::config::default_dir);
+    let pc_cfg =
+        precheck::config::Config::load(&dir.join("precheck")).map_err(|e| format!("{e:#}"));
+    if cli {
+        let result = pc_cfg.map_err(anyhow::Error::msg).and_then(|cfg| {
+            let repo = repo.clone().unwrap_or_else(|| PathBuf::from("."));
+            precheck::cli::run(&cfg, &repo)
+        });
+        std::process::exit(match result {
+            Ok(true) => 0,
+            Ok(false) => 1,
+            Err(e) => {
+                eprintln!("Fehler: {e:#}");
+                2
+            }
+        });
+    }
+    let desktop: DesktopConfig = std::fs::read_to_string(dir.join("desktop.toml"))
+        .ok()
+        .and_then(|t| toml::from_str(&t).ok())
+        .unwrap_or_default();
+    let repo = repo.or_else(|| {
+        let cwd = std::env::current_dir().ok()?;
+        cwd.join(".git").exists().then_some(cwd)
+    });
+    if repo.is_some() && start.is_none() {
+        start = Some("precheck".into());
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio-Runtime");
+    let cubi = CubiConfig::load().map_err(|e| format!("{e:#}"));
+    let precheck = Precheck::new(pc_cfg, repo);
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title("cubi")
+            .with_app_id("cubi-desktop")
+            .with_inner_size([1440.0, 900.0])
+            .with_min_inner_size([980.0, 620.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "cubi-desktop",
+        options,
+        Box::new(move |cc| {
+            Ok(Box::new(DesktopApp::new(
+                cc,
+                rt,
+                cubi,
+                desktop.terminal,
+                precheck,
+                start,
+            )))
+        }),
+    )
+}

@@ -10,7 +10,7 @@ use tokio::process::Command;
 use tokio::sync::{Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use crate::config::{Check, substitute};
+use crate::precheck::config::{Check, substitute};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
@@ -89,7 +89,7 @@ pub async fn prepare(
     base_branch: &str,
     config_dir: &std::path::Path,
 ) -> anyhow::Result<(Option<String>, RunContext)> {
-    let warning = crate::git::fetch_base(repo, base_branch)
+    let warning = crate::precheck::git::fetch_base(repo, base_branch)
         .await
         .err()
         .map(|e| {
@@ -97,12 +97,12 @@ pub async fn prepare(
                 "Warnung: git fetch fehlgeschlagen, nutze lokalen Stand von origin/{base_branch}: {e:#}"
             )
         });
-    let base = crate::git::merge_base(repo, base_branch).await?;
-    let head = crate::git::git(repo, &["rev-parse", "HEAD"])
+    let base = crate::precheck::git::merge_base(repo, base_branch).await?;
+    let head = crate::precheck::git::git(repo, &["rev-parse", "HEAD"])
         .await?
         .trim()
         .to_string();
-    let changed = crate::git::changed_files(repo, &base).await?;
+    let changed = crate::precheck::git::changed_files(repo, &base).await?;
     Ok((
         warning,
         RunContext {
@@ -269,7 +269,7 @@ async fn run_one(
         status: Status::Running,
         elapsed: None,
     });
-    let tmp = match tempfile::Builder::new().prefix("cubi-precheck-").tempdir() {
+    let tmp = match tempfile::Builder::new().prefix("cubi-desktop-").tempdir() {
         Ok(t) => t,
         Err(e) => return Status::Failed(format!("Temp-Verzeichnis: {e}")),
     };
@@ -459,7 +459,7 @@ pub fn current_os() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::parse_profile;
+    use crate::precheck::config::parse_profile;
 
     fn check(extra: &str, steps: &str) -> Check {
         let t =

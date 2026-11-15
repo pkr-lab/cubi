@@ -1,4 +1,4 @@
-use crate::runner::Status;
+use crate::precheck::runner::Status;
 
 const TYPES: &[&str] = &[
     "feat", "fix", "docs", "chore", "refactor", "test", "ci", "build", "perf", "style", "revert",
@@ -91,7 +91,7 @@ pub fn pr_body(subjects: &[String], checks: &[(String, bool, Status)]) -> String
     for s in subjects {
         b.push_str(&format!("- {s}\n"));
     }
-    b.push_str("\n## Lokale Checks (cubi-precheck)\n\n");
+    b.push_str("\n## Lokale Checks (cubi-desktop)\n\n");
     for (name, required, status) in checks {
         let icon = match status {
             Status::Ok => "✅",

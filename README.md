@@ -13,10 +13,10 @@ cubi
 
 Voraussetzung: Python 3 mit `rich` und `pyyaml`.
 
-## cubi-precheck
+## cubi-desktop
 
-Desktop-App in Rust, die vor dem `git push` die CI-Checks der capulus-Repos lokal ausführt und danach Push oder PR per Button anbietet: [cubi-precheck/README.md](cubi-precheck/README.md).
+Desktop-Oberfläche in Rust mit allen cubi-Bereichen und lokalen CI-Checks vor dem Push: [cubi-desktop/README.md](cubi-desktop/README.md).
 
 ## Dokumentation
 
-[Überblick](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/index.md) · [Installation](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/installation.md) · [Konfiguration](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/konfiguration.md) · [Nutzung](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/nutzung.md) · [Bedienung](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/bedienung.md) · [ArgoCD-Features](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/argocd-features.md) · [Releases](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/releases.md) · [cubi-precheck](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/precheck.md)
+[Überblick](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/index.md) · [Installation](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/installation.md) · [Konfiguration](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/konfiguration.md) · [Nutzung](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/nutzung.md) · [Bedienung](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/bedienung.md) · [ArgoCD-Features](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/argocd-features.md) · [Releases](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/releases.md) · [cubi-desktop](https://github.com/pkr-lab/pkr-lab-docs/blob/main/cubi/desktop.md)
