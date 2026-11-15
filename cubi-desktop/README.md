@@ -36,12 +36,29 @@ Die CI (`.github/workflows/cubi-desktop.yml`) baut und testet auf `ubuntu-latest
 
 Entwicklung: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`.
 
-## Start
+## Installation als Desktop-App
 
 ```bash
-mkdir -p ~/.config/cubi-desktop
-cp -r config/* ~/.config/cubi-desktop/
-./target/release/cubi-desktop
+./install.sh
+```
+
+Das Skript baut die App im Release-Modus und kopiert die Konfiguration nach `~/.config/cubi-desktop/`. Vorhandene Dateien dort bleiben unverändert. Danach installiert es die App mit Icon:
+
+| System | Ergebnis |
+|---|---|
+| Linux | `~/.local/bin/cubi-desktop`, Eintrag „cubi“ im Anwendungsmenü (`~/.local/share/applications/cubi-desktop.desktop`), Icons in `~/.local/share/icons/hicolor`, Symbol auf dem Schreibtisch |
+| macOS | `~/Applications/cubi.app` mit Icon, startbar über Launchpad und Spotlight, Verknüpfung auf dem Schreibtisch. Fürs Dock: App starten, Rechtsklick aufs Dock-Symbol, „Im Dock behalten“. |
+
+- `./install.sh --no-desktop` installiert ohne Symbol auf dem Schreibtisch.
+- `./install.sh --uninstall` entfernt App, Starter und Icons. Die Konfiguration bleibt erhalten.
+- Nach einem `git pull` installiert ein erneutes `./install.sh` die neue Version.
+
+Unter GNOME muss das Schreibtisch-Symbol beim ersten Start eventuell per Rechtsklick und „Start erlauben“ freigegeben werden.
+
+## Start aus dem Terminal
+
+```bash
+cubi-desktop                    # bzw. ./target/release/cubi-desktop
 ```
 
 - `--bereich <name>` öffnet einen Bereich direkt. Die Namen und Aliase sind dieselben wie bei cubi, z. B. `argocd`, `sync`, `ft`, `scale`, `k8s`, `gh`, `tokens`, `login`, `precheck`.
