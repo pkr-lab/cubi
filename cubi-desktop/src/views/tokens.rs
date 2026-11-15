@@ -383,11 +383,7 @@ impl super::View for Tokens {
                         Ok(root) => {
                             let mut argv = vec![root.join(&t.command[0]).display().to_string()];
                             argv.extend(t.command[1..].iter().cloned());
-                            let full = [
-                                vec!["env".to_string(), "-C".into(), root.display().to_string()],
-                                argv,
-                            ]
-                            .concat();
+                            let full = crate::shell::in_dir(&root, argv);
                             if let Err(e) = cx.terminal(full) {
                                 self.message = Some((Tone::Bad, e));
                             } else {

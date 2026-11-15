@@ -141,9 +141,14 @@ pub fn default_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("CUBI_DESKTOP_CONFIG") {
         return PathBuf::from(d);
     }
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("cubi-desktop")
+    config_home().join("cubi-desktop")
+}
+
+pub fn config_home() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
 }
 
 pub fn expand_home(p: &str) -> PathBuf {
