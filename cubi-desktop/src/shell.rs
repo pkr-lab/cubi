@@ -50,37 +50,79 @@ pub fn merge_path(current: &str, extra: &str) -> String {
     out.join(":")
 }
 
-pub fn login_shell_path() -> Option<String> {
-    let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty())?;
-    let mut child = std::process::Command::new(shell)
-        .args(["-l", "-c", r#"printf %s "$PATH""#])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if std::time::Instant::now() < deadline => {
-                std::thread::sleep(Duration::from_millis(50))
-            }
-            _ => {
-                let _ = child.kill();
-                return None;
-            }
-        }
-    }
-    let mut s = String::new();
-    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut s).ok()?;
-    Some(s.trim().to_string()).filter(|s| !s.is_empty())
+pub const IMPORTED_VARS: &[&str] = &["KUBECONFIG", "SSH_AUTH_SOCK", "DOCKER_HOST", "CUBI_CONFIG"];
+pub const IMPORTED_PREFIXES: &[&str] = &[
+    "ARGOCD_",
+    "GH_",
+    "GITHUB_",
+    "HELM_",
+    "KUBE",
+    "TAILSCALE_",
+    "HOMEBREW_",
+];
+
+pub fn parse_env0(bytes: &[u8]) -> Vec<(String, String)> {
+    bytes
+        .split(|b| *b == 0)
+        .filter_map(|entry| {
+            let s = String::from_utf8_lossy(entry);
+            let (k, v) = s.split_once('=')?;
+            (!k.is_empty() && !k.contains('\n')).then(|| (k.to_string(), v.to_string()))
+        })
+        .collect()
 }
 
-pub fn extended_path() -> String {
-    let current = std::env::var("PATH").unwrap_or_default();
-    let mut extra = login_shell_path().unwrap_or_default();
-    let home = dirs::home_dir().unwrap_or_default();
+pub fn shell_env() -> Vec<(String, String)> {
+    let Some(shell) = std::env::var("SHELL").ok().filter(|s| !s.is_empty()) else {
+        return vec![];
+    };
+    let mut cmd = std::process::Command::new(shell);
+    cmd.args(["-l", "-i", "-c", "env -0"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: setsid ist async-signal-safe; die Shell bekommt so kein Steuerterminal
+        // und kann ein aufrufendes Terminal nicht übernehmen.
+        unsafe {
+            cmd.pre_exec(|| {
+                nix::unistd::setsid()
+                    .map(|_| ())
+                    .map_err(|e| std::io::Error::from_raw_os_error(e as i32))
+            });
+        }
+    }
+    let Ok(mut child) = cmd.spawn() else {
+        return vec![];
+    };
+    let Some(mut out) = child.stdout.take() else {
+        return vec![];
+    };
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut out, &mut buf);
+        let _ = tx.send(buf);
+    });
+    let result = rx.recv_timeout(Duration::from_secs(4));
+    let _ = child.kill();
+    let _ = child.wait();
+    result.map(|b| parse_env0(&b)).unwrap_or_default()
+}
+
+pub fn env_updates(
+    shell: &[(String, String)],
+    current: impl Fn(&str) -> Option<String>,
+    home: &std::path::Path,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut extra = shell
+        .iter()
+        .find(|(k, _)| k == "PATH")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
     for p in [
         "/opt/homebrew/bin".to_string(),
         "/usr/local/bin".into(),
@@ -90,7 +132,18 @@ pub fn extended_path() -> String {
         extra.push(':');
         extra.push_str(&p);
     }
-    merge_path(&current, &extra)
+    out.push((
+        "PATH".into(),
+        merge_path(&current("PATH").unwrap_or_default(), &extra),
+    ));
+    for (k, v) in shell {
+        let wanted = IMPORTED_VARS.contains(&k.as_str())
+            || IMPORTED_PREFIXES.iter().any(|p| k.starts_with(p));
+        if wanted && current(k).is_none_or(|c| c.is_empty()) {
+            out.push((k.clone(), v.clone()));
+        }
+    }
+    out
 }
 
 pub async fn capture<S: AsRef<str>>(argv: &[S], timeout_secs: u64) -> Result<Output> {
@@ -383,6 +436,36 @@ mod tests {
         ]));
         assert!(!uses_script(&["xterm".into()]));
         assert_eq!(merge_path("/a:/b", "/b:/c::/a"), "/a:/b:/c");
+    }
+
+    #[test]
+    fn env_import_whitelist() {
+        let shell = parse_env0(b"PATH=/x/bin\0KUBECONFIG=/h/.kube/k.yaml\0SECRET_FOO=1\0GH_HOST=g\0PWD=/tmp\0KUBE_X=a=b\0");
+        assert_eq!(shell.len(), 6);
+        let current = |k: &str| match k {
+            "PATH" => Some("/usr/bin".to_string()),
+            "GH_HOST" => Some("eigen".to_string()),
+            _ => None,
+        };
+        let up = env_updates(&shell, current, std::path::Path::new("/h"));
+        assert!(up[0].1.starts_with("/usr/bin:/x/bin:"));
+        assert!(up.contains(&("KUBECONFIG".into(), "/h/.kube/k.yaml".into())));
+        assert!(up.contains(&("KUBE_X".into(), "a=b".into())));
+        assert!(
+            !up.iter()
+                .any(|(k, _)| k == "SECRET_FOO" || k == "PWD" || k == "GH_HOST")
+        );
+    }
+
+    #[test]
+    fn shell_env_reads_interactive_shell() {
+        let env = shell_env();
+        if std::env::var("SHELL").is_ok_and(|s| s.ends_with("bash")) {
+            assert!(
+                env.iter().any(|(k, _)| k == "PATH"),
+                "keine Umgebung aus der Shell"
+            );
+        }
     }
 
     #[test]

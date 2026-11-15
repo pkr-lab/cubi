@@ -4,3 +4,10 @@
 # konsole, xfce4-terminal, kitty, alacritty, xterm). Das Kommando wird als
 # Argumentliste angehängt, z. B. ["gnome-terminal", "--"] oder ["xterm", "-e"].
 terminal = []
+
+# Zusätzliche Umgebungsvariablen für die App und alle aufgerufenen Werkzeuge.
+# Normalerweise nicht nötig: Die App übernimmt beim Start KUBECONFIG,
+# SSH_AUTH_SOCK, ARGOCD_*, GH_*, KUBE* usw. aus der interaktiven Shell
+# (~/.bashrc, ~/.zshrc). "~/" wird aufgelöst.
+[env]
+# KUBECONFIG = "~/.kube/homeserver.yaml"
